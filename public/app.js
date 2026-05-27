@@ -1759,29 +1759,45 @@ function lcHashInt(str) {
   return Math.abs(h);
 }
 
-// ── Detectar género desde nombre de usuario (determinístico) ───────
-// Usa lista de nombres comunes + heurística de sufijo + hash fallback
-function lcDetectGender(username) {
-  const name = (username || '').toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '') // quitar tildes
-    .replace(/[^a-z]/g, '');                           // solo letras
+// ── Extraer primer nombre de un username compuesto ────────────────
+// "MiguelTech_CO" → "miguel"  |  "AndreaBogota22" → "andrea"
+function lcExtractFirstName(username) {
+  return (username || '')
+    .replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ]/g, ' ') // _ dígitos guiones → espacio
+    .replace(/([a-z])([A-Z])/g, '$1 $2')          // camelCase → "Miguel Tech"
+    .trim().split(/\s+/)[0]                        // primera palabra
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, ''); // quitar tildes
+}
 
-  const FEMALE = /^(sofia|maria|laura|ana|valentina|andrea|daniela|isabella|camila|paula|diana|monica|patricia|jessica|karen|sandra|natalia|carolina|alejandra|fernanda|gabriela|juliana|claudia|rosa|elena|teresa|carmen|lucia|sara|beatriz|luisa|adriana|vanessa|viviana|lorena|marcela|isabel|pilar|gloria|susana|veronica|mariana|paola|lina|liliana|jenny|johanna|yolanda|cristina|nathalia|tatiana|jennifer|stephanie|katherine|elizabeth|estefania|samantha|rebeca|fabiola|marcela|xiomara|milena|leidy|wendy|dayana|luz|nadia|giselle|ivonne|silvia|olga|ruth|eva|ana|ines|irene|ximena|rachel|nicole)/;
-  const MALE   = /^(carlos|juan|miguel|diego|andres|sebastian|felipe|david|jorge|luis|pedro|alberto|mario|fernando|gabriel|alejandro|roberto|ricardo|jose|antonio|manuel|francisco|eduardo|rafael|sergio|cesar|victor|oscar|ernesto|rodrigo|julian|nicolas|mauricio|camilo|santiago|daniel|steven|jhon|john|michael|james|robert|william|richard|kevin|brian|alex|ivan|nelson|wilson|henry|edgar|omar|hugo|ruben|arturo|gerardo|ernesto|raul|armando|hector|enrique|gustavo|andres|hernan|jairo|yesid|yeison|brayan|stiven|cristian|christian|jonathan|jhonatan|anderson|jefferson|esteban|mateo|samuel|simon|tomas)/;
+// ── Detección local confiable — devuelve null si nombre es ambiguo ──
+// null = pasar al caché IA; valor = certeza suficiente para no ser sobrescrito
+function lcDetectGenderLocal(username) {
+  const name = lcExtractFirstName(username);
+  if (!name) return null;
+
+  const FEMALE = /^(sofia|maria|laura|ana|valentina|andrea|daniela|isabella|camila|paula|diana|monica|patricia|jessica|karen|sandra|natalia|carolina|alejandra|fernanda|gabriela|juliana|claudia|rosa|elena|teresa|carmen|lucia|sara|beatriz|luisa|adriana|vanessa|viviana|lorena|marcela|isabel|pilar|gloria|susana|veronica|mariana|paola|lina|liliana|jenny|johanna|yolanda|cristina|nathalia|tatiana|jennifer|stephanie|katherine|elizabeth|estefania|samantha|rebeca|fabiola|xiomara|milena|leidy|wendy|dayana|luz|nadia|giselle|ivonne|silvia|olga|ruth|eva|ines|irene|ximena|rachel|nicole)/;
+  const MALE   = /^(carlos|juan|miguel|diego|andres|sebastian|felipe|david|jorge|luis|pedro|alberto|mario|fernando|gabriel|alejandro|roberto|ricardo|jose|antonio|manuel|francisco|eduardo|rafael|sergio|cesar|victor|oscar|ernesto|rodrigo|julian|nicolas|mauricio|camilo|santiago|daniel|steven|jhon|john|michael|james|robert|william|richard|kevin|brian|alex|ivan|nelson|wilson|henry|edgar|omar|hugo|ruben|arturo|gerardo|raul|armando|hector|enrique|gustavo|hernan|jairo|yesid|yeison|brayan|stiven|cristian|christian|jonathan|jhonatan|anderson|jefferson|esteban|mateo|samuel|simon|tomas)/;
 
   if (FEMALE.test(name)) return 'female';
   if (MALE.test(name))   return 'male';
 
-  // Sufijo heurístico: -ina, -ana, -ela, -ita → female; -on, -ez, -os → male
-  if (/ina$|ana$|ela$|ita$|ina$/.test(name) && name.length > 4) return 'female';
-  if (/on$|ez$|os$|us$|or$/.test(name) && name.length > 3)      return 'male';
-  // Nombre terminado en 'a' sin ser apellido corto → probable female
-  if (name.endsWith('a') && name.length > 4) return 'female';
+  // Sufijos de alta confianza
+  if (/ina$|ana$|ela$|ita$/.test(name) && name.length > 4) return 'female';
+  if (/on$|ez$|os$|us$/.test(name) && name.length > 3)     return 'male';
 
-  // Fallback determinístico por hash — respeta el ratio configurado
-  // Si genderRatio=70: 70 de cada 100 hashes → female
+  return null; // ambiguo → dejar al caché IA o fallback hash
+}
+
+// ── Fallback por hash (respeta slider de ratio) ──────────────────
+function lcDetectGenderFallback(username) {
   const ratio = parseInt(document.getElementById('lc-gender-ratio')?.value || '70', 10);
   return (lcHashInt(username) % 100) < ratio ? 'female' : 'male';
+}
+
+// ── Detección combinada (wrapper compatible con código existente) ──
+function lcDetectGender(username) {
+  return lcDetectGenderLocal(username) ?? lcDetectGenderFallback(username);
 }
 
 // ── Detección de género con IA (Gemini) — una sola llamada batch ─────
@@ -1840,10 +1856,17 @@ Reglas:
   }
 }
 
-// ── Obtener género de un username (caché IA → detección local) ──────
+// ── Obtener género de un username ─────────────────────────────────────
+// Prioridad: (1) género del comentario → (2) lista local confiable →
+//            (3) caché IA (nombres ambiguos) → (4) hash fallback
+// La lista local SIEMPRE gana sobre la IA para nombres conocidos.
+// Esto evita que Gemini clasifique mal "MiguelTech_CO" como female.
 function lcGetGender(username, commentGender) {
-  // Prioridad: (1) género guardado en el comentario, (2) caché IA, (3) detección local
-  return commentGender || _lcGenderCache[username] || lcDetectGender(username);
+  if (commentGender) return commentGender;
+  const local = lcDetectGenderLocal(username);
+  if (local !== null) return local;
+  if (_lcGenderCache[username]) return _lcGenderCache[username];
+  return lcDetectGenderFallback(username);
 }
 
 // ── Avatar fallback con randomuser.me (retratos reales, sin API key) ──
@@ -1854,17 +1877,25 @@ function lcGetFallbackAvatar(username, gender) {
   return `https://randomuser.me/api/portraits/${g}/${n}.jpg`;
 }
 
-// ── Selección de avatar DB por hash (determinístico, no random) ────
-// Garantiza que cada username siempre reciba el mismo avatar de la DB
-function lcPickDbAvatarForUser(username, gender, country, ageGroup) {
+// ── Selección de avatar DB con sondeo lineal ─────────────────────
+// usedUrls: Set<string> de URLs ya asignadas → garantiza avatar único por usuario
+// Si el pool se agota, retorna el índice hash original (sin filtro de colisión)
+function lcPickDbAvatarForUser(username, gender, country, ageGroup, usedUrls) {
   if (!_lcDbAvatars?.length) return null;
   // Pools en orden de preferencia (más específico → más general)
   let pool = _lcDbAvatars.filter(a => a.gender === gender && a.country === country && a.age_group === ageGroup);
   if (!pool.length) pool = _lcDbAvatars.filter(a => a.gender === gender && a.country === country);
   if (!pool.length) pool = _lcDbAvatars.filter(a => a.gender === gender);
   if (!pool.length) pool = _lcDbAvatars;
-  // Índice determinístico por username hash
-  return pool[lcHashInt(username) % pool.length]?.url || null;
+
+  const start = lcHashInt(username) % pool.length;
+  // Sondeo lineal: busca el primer URL no usado (colisión cero cuando pool > nº usuarios)
+  for (let i = 0; i < pool.length; i++) {
+    const candidate = pool[(start + i) % pool.length]?.url;
+    if (candidate && (!usedUrls || !usedUrls.has(candidate))) return candidate;
+  }
+  // Pool agotado (más usuarios que avatares) → retornar candidato original sin filtro
+  return pool[start]?.url || null;
 }
 
 // ── Helpers ───────────────────────────────────────────────
@@ -2369,14 +2400,17 @@ async function lcAutoAssignAvatars() {
   await lcFetchDbAvatars();
   if (_lcDbAvatars?.length) {
     let dbUpdated = false;
+    // usedUrls garantiza avatar único por usuario (sondeo lineal en lcPickDbAvatarForUser)
+    const usedUrls = new Set(Object.values(_lcAvatarMap));
     for (const username of unique) {
       const c        = _lcComments.find(x => x.username === username);
       const gender   = lcGetGender(username, c?.gender);
       const ageGroup = lcDetectAgeGroup(username);
-      // lcPickDbAvatarForUser usa hash → mismo username = mismo avatar DB siempre
-      const dbUrl    = lcPickDbAvatarForUser(username, gender, cfg.country, ageGroup);
+      const dbUrl    = lcPickDbAvatarForUser(username, gender, cfg.country, ageGroup, usedUrls);
       if (dbUrl && _lcAvatarMap[username] !== dbUrl) {
+        usedUrls.delete(_lcAvatarMap[username]); // liberar el anterior
         _lcAvatarMap[username] = dbUrl;
+        usedUrls.add(dbUrl);                     // reservar el nuevo
         dbUpdated = true;
       }
     }
