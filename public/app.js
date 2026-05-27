@@ -1778,8 +1778,10 @@ function lcDetectGender(username) {
   // Nombre terminado en 'a' sin ser apellido corto → probable female
   if (name.endsWith('a') && name.length > 4) return 'female';
 
-  // Fallback determinístico por hash (sin random)
-  return lcHashInt(username) % 3 !== 0 ? 'female' : 'male'; // 67% female (típico en lives)
+  // Fallback determinístico por hash — respeta el ratio configurado
+  // Si genderRatio=70: 70 de cada 100 hashes → female
+  const ratio = parseInt(document.getElementById('lc-gender-ratio')?.value || '70', 10);
+  return (lcHashInt(username) % 100) < ratio ? 'female' : 'male';
 }
 
 // ── Detección de género con IA (Gemini) — una sola llamada batch ─────
@@ -2082,6 +2084,7 @@ function lcGetConfig() {
     country:        document.getElementById('lc-country')?.value           || 'Colombia',
     timeFormat:     document.getElementById('lc-time-format')?.value       || 'hace_seg',
     fillerPerMin:   parseInt(document.getElementById('lc-filler-per-min')?.value || '7', 10),
+    genderRatio:    parseInt(document.getElementById('lc-gender-ratio')?.value   || '70', 10), // % female (0-100)
     tipo:           document.getElementById('lc-tipo')?.value              || 'producto',
     nombreProducto: (document.getElementById('lc-nombre-producto')?.value  || '').trim(),
     descProducto:   (document.getElementById('lc-desc-producto')?.value    || '').trim()
@@ -2104,12 +2107,27 @@ function lcLoadConfig() {
     const el = document.getElementById('lc-filler-per-min');
     if (el) { el.value = cfg.fillerPerMin; lcUpdateFillerLabel(cfg.fillerPerMin); }
   }
+  if (cfg.genderRatio !== undefined) {
+    const el = document.getElementById('lc-gender-ratio');
+    if (el) { el.value = cfg.genderRatio; lcUpdateGenderLabel(cfg.genderRatio); }
+  }
 }
 
 // Actualiza la etiqueta del slider de relleno
 function lcUpdateFillerLabel(val) {
   const lbl = document.getElementById('lc-filler-label');
   if (lbl) lbl.textContent = val + ' / min';
+}
+
+// Actualiza la etiqueta del slider de género
+function lcUpdateGenderLabel(pctFemale) {
+  const lbl = document.getElementById('lc-gender-label');
+  if (!lbl) return;
+  const f = parseInt(pctFemale, 10);
+  const m = 100 - f;
+  if (f === 100) lbl.textContent = '100% ♀';
+  else if (m === 100) lbl.textContent = '100% ♂';
+  else lbl.textContent = `${f}% ♀ · ${m}% ♂`;
 }
 
 // ── Construir lista completa: scripted + filler ───────────
@@ -2168,7 +2186,7 @@ function lcBuildCommentList() {
     const sec    = Math.floor((maxSec / (totalFiller + 1)) * (i + 1));
     const src    = lcRand(fillerPools);
     const ftext  = src.text.replace('[CITY]', lcRand(cities));
-    const gender = Math.random() < 0.6 ? 'female' : 'male';
+    const gender = Math.random() * 100 < (cfg.genderRatio ?? 70) ? 'female' : 'male';
     const recent = recentFirst.slice(-4);
     let   name;
     let   tries  = 0;
@@ -2645,6 +2663,14 @@ function lcBindAll() {
 
   document.getElementById('lc-filler-per-min')?.addEventListener('input', e => {
     lcUpdateFillerLabel(e.target.value);
+    lcRenderPreview();
+  });
+
+  document.getElementById('lc-gender-ratio')?.addEventListener('input', e => {
+    lcUpdateGenderLabel(e.target.value);
+    // Limpiar caché de avatares para que se reasignen con el nuevo ratio
+    _lcAvatarMap  = {};
+    _lcGenderCache = {};
     lcRenderPreview();
   });
 
