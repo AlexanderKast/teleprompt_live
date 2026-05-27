@@ -1,96 +1,96 @@
+// ============================================================
+//  FakeLive Pro — server.js
+//  Node.js 18+ (fetch nativo)
+//  Carga variables desde .env (desarrollo local)
+//  En Vercel: configura las variables en el dashboard
+// ============================================================
+
+// Cargar .env en desarrollo local (no falla si no existe)
+try { require('dotenv').config(); } catch (_) {}
+
 const express = require('express');
 const path    = require('path');
 
 const app  = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.listen(PORT, () => {
-  console.log(`FakeLive Pro corriendo en http://localhost:${PORT}`);
-});
-
-
-// ================================================
-// === LIVECAKE EXPORT ===
-// Requiere Node.js 18+ (fetch nativo) y los paquetes
-// @supabase/supabase-js y sharp instalados.
-// ================================================
-
+// ── Inicializar Supabase con Service Role desde .env ──────────
 let sharp, createClient;
-try { sharp       = require('sharp'); }          catch (_) {}
+try { sharp          = require('sharp'); }              catch (_) {}
 try { ({ createClient } = require('@supabase/supabase-js')); } catch (_) {}
 
-// Configuración en memoria (recibida desde el frontend)
-let appConfig      = {};
-let sbStorage      = null;
-const avatarCache  = new Map();
-
-// Mapeo país → descripción étnica para el prompt de Gemini Imagen
-const ETHNICITY_MAP = {
-  'Colombia':              'Colombian Latin American',
-  'Venezuela':             'Venezuelan Latin American',
-  'Ecuador':               'Ecuadorian Latin American',
-  'Perú':                  'Peruvian Latin American',
-  'Bolivia':               'Bolivian Latin American',
-  'México':                'Mexican Latin American',
-  'Argentina':             'Argentine Latin American',
-  'Uruguay':               'Uruguayan Latin American',
-  'Chile':                 'Chilean Latin American',
-  'España':                'Spanish European',
-  'República Dominicana':  'Dominican Caribbean',
-  'Cuba':                  'Cuban Caribbean',
-  'Puerto Rico':           'Puerto Rican Caribbean'
+// Config desde env vars (seguro — nunca del frontend)
+const ENV = {
+  supabaseUrl:     process.env.SUPABASE_URL          || '',
+  supabaseService: process.env.SUPABASE_SERVICE_KEY  || '',
+  geminiKey:       process.env.GEMINI_API_KEY        || ''
 };
 
-// ── POST /api/config — recibe claves del frontend ─────────────
-app.post('/api/config', (req, res) => {
-  const { nanobananaKey, supabaseUrl, supabaseAnon, supabaseService } = req.body || {};
-  if (nanobananaKey)   appConfig.nanobananaKey   = nanobananaKey;
-  if (supabaseUrl)     appConfig.supabaseUrl     = supabaseUrl;
-  if (supabaseAnon)    appConfig.supabaseAnon    = supabaseAnon;
-  if (supabaseService) appConfig.supabaseService = supabaseService;
+// Cliente Supabase server-side (service role = permisos totales)
+let sbStorage = null;
+if (createClient && ENV.supabaseUrl && ENV.supabaseService) {
+  sbStorage = createClient(ENV.supabaseUrl, ENV.supabaseService);
+  console.log('[Supabase] Cliente server-side inicializado desde .env');
+}
 
-  // Reinicializar cliente Supabase con service role key
-  if (createClient && appConfig.supabaseUrl && appConfig.supabaseService) {
-    sbStorage = createClient(appConfig.supabaseUrl, appConfig.supabaseService);
-  }
+// Clave Gemini recibida del frontend (por usuario) — en memoria, no en DB
+let geminiKeyFromFrontend = ENV.geminiKey || '';
+const avatarCache = new Map();
+
+// ── POST /api/config — recibe Gemini key del frontend ────────
+// Solo acepta la clave Gemini (las claves Supabase vienen del .env)
+app.post('/api/config', (req, res) => {
+  const { nanobananaKey } = req.body || {};
+  if (nanobananaKey) geminiKeyFromFrontend = nanobananaKey;
   res.json({ ok: true });
 });
 
-// ── GET /api/avatar-status — estado de configuración ─────────
-app.get('/api/avatar-status', (req, res) => {
+// ── GET /api/status — estado de configuración ─────────────────
+app.get('/api/status', (req, res) => {
   res.json({
-    configured: !!(appConfig.nanobananaKey || appConfig.supabaseService),
-    nanobanana: !!appConfig.nanobananaKey,
-    supabase:   !!(appConfig.supabaseUrl && appConfig.supabaseService)
+    supabase: !!sbStorage,
+    gemini:   !!(geminiKeyFromFrontend),
+    sharp:    !!sharp
   });
 });
 
-// ── POST /api/generate-avatar — genera y sube avatar ─────────
+// ── POST /api/generate-avatar — genera y sube avatar con IA ──
 app.post('/api/generate-avatar', async (req, res) => {
   if (!sharp) return res.status(503).json({ error: 'sharp no instalado. Ejecuta: npm install' });
+  if (!sbStorage) return res.status(503).json({ error: 'Supabase no configurado. Agrega SUPABASE_SERVICE_KEY en .env' });
 
   const { username, country, gender = 'female' } = req.body || {};
   if (!username) return res.status(400).json({ error: 'username requerido' });
 
-  // Caché en sesión
   if (avatarCache.has(username)) {
     return res.json({ url: avatarCache.get(username), username, cached: true });
   }
 
+  const ETHNICITY_MAP = {
+    'Colombia': 'Colombian Latin American', 'Venezuela': 'Venezuelan Latin American',
+    'Ecuador': 'Ecuadorian Latin American', 'Perú': 'Peruvian Latin American',
+    'Bolivia': 'Bolivian Latin American',   'México': 'Mexican Latin American',
+    'Argentina': 'Argentine Latin American','Uruguay': 'Uruguayan Latin American',
+    'Chile': 'Chilean Latin American',      'España': 'Spanish European',
+    'República Dominicana': 'Dominican Caribbean', 'Cuba': 'Cuban Caribbean',
+    'Puerto Rico': 'Puerto Rican Caribbean'
+  };
+
   const ethnicDesc = ETHNICITY_MAP[country] || 'Latin American';
-  const age        = Math.floor(Math.random() * 24) + 22; // 22–45
+  const age        = Math.floor(Math.random() * 24) + 22;
   const genderWord = gender === 'male' ? 'man' : 'woman';
   let imageBuffer  = null;
 
-  // Intentar Gemini Imagen 3 (misma clave que la IA de texto)
-  if (appConfig.nanobananaKey) {
+  // Intentar Gemini Imagen 3
+  const geminiKey = geminiKeyFromFrontend || ENV.geminiKey;
+  if (geminiKey) {
     try {
       const prompt = `Professional headshot portrait photo, ${genderWord}, approximately ${age} years old, ${ethnicDesc} appearance, soft neutral background, natural lighting, realistic photography, LinkedIn style profile`;
       const r = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${appConfig.nanobananaKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${geminiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -106,7 +106,7 @@ app.post('/api/generate-avatar', async (req, res) => {
         const b64  = data?.predictions?.[0]?.bytesBase64Encoded;
         if (b64) imageBuffer = Buffer.from(b64, 'base64');
       }
-    } catch (e) { console.warn('[Avatar] Gemini Imagen falló:', e.message); /* fallback a DiceBear */ }
+    } catch (e) { console.warn('[Avatar] Gemini Imagen falló:', e.message); }
   }
 
   // Fallback: DiceBear personas
@@ -114,7 +114,7 @@ app.post('/api/generate-avatar', async (req, res) => {
     try {
       const seed = encodeURIComponent(username);
       const r = await fetch(
-        `https://api.dicebear.com/7.x/personas/svg?seed=${seed}&backgroundColor=b6e3f4,c0aede,d1d4f9`,
+        `https://api.dicebear.com/9.x/personas/svg?seed=${seed}`,
         { signal: AbortSignal.timeout(6000) }
       );
       if (r.ok) imageBuffer = Buffer.from(await r.arrayBuffer());
@@ -123,52 +123,49 @@ app.post('/api/generate-avatar', async (req, res) => {
     }
   }
 
-  // Redimensionar a 100×100 JPEG calidad 60 (tamaño óptimo para LiveCake)
+  // Redimensionar a 100×100 JPEG q65
   let jpegBuffer;
   try {
     jpegBuffer = await sharp(imageBuffer, { density: 72 })
       .resize(100, 100, { fit: 'cover', position: 'centre' })
-      .jpeg({ quality: 60 })
+      .jpeg({ quality: 65 })
       .toBuffer();
   } catch (e) {
     return res.status(500).json({ error: 'Error procesando imagen: ' + e.message });
   }
 
-  // Subir a Supabase Storage
+  // Subir a Supabase Storage (service role)
   let publicUrl = null;
-  if (sbStorage) {
+  const BUCKET = 'fakelive-avatars';
+  try {
+    await sbStorage.storage.createBucket(BUCKET, { public: true }).catch(() => {});
     const safe     = username.replace(/[^a-zA-Z0-9]/g, '_');
     const filePath = `avatars/${safe}_${Date.now()}.jpg`;
-    try {
-      await sbStorage.storage.createBucket('fakelive-avatars', { public: true }).catch(() => {});
-      const { error: upErr } = await sbStorage.storage
-        .from('fakelive-avatars')
-        .upload(filePath, jpegBuffer, { contentType: 'image/jpeg', upsert: true });
-      if (!upErr) {
-        const { data } = sbStorage.storage.from('fakelive-avatars').getPublicUrl(filePath);
-        publicUrl = data.publicUrl;
-      }
-    } catch (e) {
-      console.warn('[Avatar] Supabase upload failed:', e.message);
+    const { error: upErr } = await sbStorage.storage
+      .from(BUCKET)
+      .upload(filePath, jpegBuffer, { contentType: 'image/jpeg', upsert: true });
+    if (!upErr) {
+      const { data } = sbStorage.storage.from(BUCKET).getPublicUrl(filePath);
+      publicUrl = data.publicUrl;
     }
+  } catch (e) {
+    console.warn('[Avatar] Supabase upload failed:', e.message);
   }
 
-  // Sin Supabase → DiceBear URL directamente (no requiere subida)
   if (!publicUrl) {
-    publicUrl = `https://api.dicebear.com/7.x/personas/svg?seed=${encodeURIComponent(username)}`;
+    publicUrl = `https://api.dicebear.com/9.x/personas/svg?seed=${encodeURIComponent(username)}`;
   }
 
   avatarCache.set(username, publicUrl);
   res.json({ url: publicUrl, username });
 });
 
-// ── POST /api/export-csv — genera y devuelve CSV (comma-delimited) ──
+// ── POST /api/export-csv — genera CSV comma-delimited ─────────
 app.post('/api/export-csv', (req, res) => {
   const { rows } = req.body || {};
   if (!rows || !rows.length) return res.status(400).json({ error: 'No hay filas' });
 
-  const quote = v => `"${String(v).replace(/"/g, '""')}"`;
-
+  const quote  = v => `"${String(v).replace(/"/g, '""')}"`;
   const BOM    = '﻿';
   const header = '"Title","Content","Time","Image"';
   const lines  = rows.map(r =>
@@ -182,4 +179,10 @@ app.post('/api/export-csv', (req, res) => {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="livecake_${country}_${ts}.csv"`);
   res.send(csv);
+});
+
+app.listen(PORT, () => {
+  console.log(`\n🚀 FakeLive Pro corriendo en http://localhost:${PORT}`);
+  console.log(`   Supabase: ${sbStorage ? '✅ conectado' : '⚠️  configura SUPABASE_SERVICE_KEY en .env'}`);
+  console.log(`   Gemini:   ${ENV.geminiKey ? '✅ clave en .env' : '— cada usuario ingresa la suya en la app'}\n`);
 });
