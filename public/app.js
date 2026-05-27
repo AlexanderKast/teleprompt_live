@@ -1816,9 +1816,10 @@ function lcToggleChecklist() {
 
 // ── Generación de filler con IA (Gemini) ─────────────────
 // Async — genera comentarios contextuales al guion y los cachea
-async function lcGenerateAiFiller(scriptText, country) {
-  const key = (scriptText || '').slice(0, 200) + country;
-  if (_lcAiFillerPool !== null && _lcAiScriptKey === key) return; // ya cacheado
+async function lcGenerateAiFiller(scriptText, country, productoCtx = {}) {
+  const { tipo = 'producto', nombreProducto = '', descProducto = '' } = productoCtx;
+  const cacheKey = (scriptText || '').slice(0, 200) + country + tipo + nombreProducto + descProducto.slice(0, 100);
+  if (_lcAiFillerPool !== null && _lcAiScriptKey === cacheKey) return; // ya cacheado
 
   const geminiKey = localStorage.getItem('fakelive_gemini_key') || '';
   const chipEl    = document.getElementById('lc-chip-ai');
@@ -1831,10 +1832,10 @@ async function lcGenerateAiFiller(scriptText, country) {
 
   if (chipEl) { chipEl.className = 'lc-chip'; chipEl.textContent = '🤖 IA: generando comentarios...'; }
 
-  // Extraer tema del guion (primeros bloques GUION)
+  // Extraer extracto del guion (primeros bloques GUION)
   const topicLines = (scriptText || '').split('\n')
     .filter(l => /\[GUION\]/.test(l))
-    .slice(0, 4)
+    .slice(0, 5)
     .map(l => l.replace(/^\d+:\d+\s+\[GUION\]\s+/, '').trim())
     .join('. ');
 
@@ -1844,27 +1845,40 @@ async function lcGenerateAiFiller(scriptText, country) {
     return;
   }
 
-  const prompt = `Eres un generador de comentarios auténticos para un live de ventas en redes sociales latinoamericanas.
+  // Mapas de etiquetas legibles
+  const tipoLabel = { producto: 'producto físico', servicio: 'servicio', curso: 'curso o capacitación', infoproducto: 'infoproducto o producto digital' }[tipo] || tipo;
 
-El live trata sobre: "${topicLines.slice(0, 400)}"
+  const contextBlock = [
+    nombreProducto ? `Nombre: ${nombreProducto}` : '',
+    `Tipo: ${tipoLabel}`,
+    descProducto   ? `Descripción: ${descProducto.slice(0, 250)}` : ''
+  ].filter(Boolean).join('\n');
+
+  const prompt = `Eres un generador de comentarios 100% auténticos para un live de ventas en redes sociales latinoamericanas.
+
+═══ CONTEXTO DEL LIVE ═══
+${contextBlock}
 País del live: ${country}
+Extracto del guion: "${topicLines.slice(0, 500)}"
+═════════════════════════
 
-Genera EXACTAMENTE 60 comentarios de espectadores mezclando estos tipos:
-- INTERÉS (15): preguntas que generan curiosidad y deseo sobre el tema
-- FAQ (15): preguntas frecuentes sobre precio, proceso, garantía, fechas
-- TESTIMONIAL (15): testimonios positivos de compradores anteriores
-- RELLENO (15): comentarios casuales de engagement y seguimiento
+Genera EXACTAMENTE 60 comentarios de espectadores reales, mezclando estos tipos:
+- INTERÉS (15): preguntas que generan curiosidad y deseo de compra. Menciona características específicas del producto/servicio.
+- FAQ (15): preguntas sobre precio, envío, garantía, plazos, modalidades de pago, proceso de compra. Usa los datos del contexto.
+- TESTIMONIAL (15): testimonios positivos y creíbles de personas que ya compraron o usaron el ${tipoLabel}. Menciona resultados concretos.
+- RELLENO (15): comentarios casuales de engagement (emojis, "estoy aquí", "qué bueno esto", "me encanta el live", saludos de ciudades).
 
-REGLAS OBLIGATORIAS:
-- Lenguaje natural e informal, español latinoamericano coloquial
-- Máximo 15 palabras por comentario
-- Adaptados específicamente al tema del live (NO genéricos)
-- Variados, sin repetir frases
+REGLAS ESTRICTAS:
+- Lenguaje NATURAL e informal, español latinoamericano coloquial (Colombia, ${country})
+- Máximo 12 palabras por comentario
+- ESPECÍFICOS al ${tipoLabel}${nombreProducto ? ` "${nombreProducto}"` : ''} — absolutamente NADA genérico
+- Variados, sin repetir frases ni estructuras
 - Sin hashtags ni links
-- Algunos con emojis naturales (no forzados)
+- Emojis solo donde suenen naturales (no forzados)
+- Los testimoniales deben sonar reales (nombres, ciudades, resultados)
 
-Responde SOLO con el JSON array, sin texto adicional ni bloques de código:
-[{"text":"comentario aquí","type":"interest"},{"text":"otro comentario","type":"faq"}]`;
+Responde SOLO con el JSON array, sin texto adicional ni bloques de código markdown:
+[{"text":"comentario aquí","type":"interest"},{"text":"otro comentario","type":"faq"},{"text":"testimonio","type":"testimonial"},{"text":"relleno casual","type":"filler"}]`;
 
   try {
     const r = await fetch(
@@ -1874,9 +1888,9 @@ Responde SOLO con el JSON array, sin texto adicional ni bloques de código:
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.95, maxOutputTokens: 3000 }
+          generationConfig: { temperature: 0.9, maxOutputTokens: 3500 }
         }),
-        signal: AbortSignal.timeout(20000)
+        signal: AbortSignal.timeout(25000)
       }
     );
     if (!r.ok) throw new Error(`Gemini HTTP ${r.status}`);
@@ -1886,13 +1900,13 @@ Responde SOLO con el JSON array, sin texto adicional ni bloques de código:
     if (!jsonMatch) throw new Error('JSON no encontrado en respuesta');
     const parsed = JSON.parse(jsonMatch[0]);
     if (!Array.isArray(parsed) || parsed.length < 5) throw new Error('Respuesta inválida');
-    _lcAiFillerPool  = parsed;
-    _lcAiScriptKey   = key;
+    _lcAiFillerPool = parsed;
+    _lcAiScriptKey  = cacheKey;
     if (chipEl) { chipEl.className = 'lc-chip lc-chip-ok'; chipEl.textContent = `🟢 IA: ${parsed.length} comentarios generados`; }
-    console.log(`[LC] IA generó ${parsed.length} comentarios de relleno`);
+    console.log(`[LC] IA generó ${parsed.length} comentarios — tipo: ${tipoLabel}, producto: "${nombreProducto || 'sin nombre'}"`);
   } catch (e) {
     console.warn('[LC] AI filler falló:', e.message, '→ usando pools estáticos');
-    _lcAiFillerPool = []; // pool vacío = usar estáticos
+    _lcAiFillerPool = [];
     if (chipEl) { chipEl.className = 'lc-chip lc-chip-warn'; chipEl.textContent = '🟡 IA: error — usando pool estático'; }
   }
 }
@@ -1945,9 +1959,12 @@ function lcPickDbAvatar(gender, country, ageGroup) {
 
 function lcGetConfig() {
   return {
-    country:      document.getElementById('lc-country')?.value        || 'Colombia',
-    timeFormat:   document.getElementById('lc-time-format')?.value    || 'hace_seg',
-    fillerPerMin: parseInt(document.getElementById('lc-filler-per-min')?.value || '7', 10)
+    country:        document.getElementById('lc-country')?.value           || 'Colombia',
+    timeFormat:     document.getElementById('lc-time-format')?.value       || 'hace_seg',
+    fillerPerMin:   parseInt(document.getElementById('lc-filler-per-min')?.value || '7', 10),
+    tipo:           document.getElementById('lc-tipo')?.value              || 'producto',
+    nombreProducto: (document.getElementById('lc-nombre-producto')?.value  || '').trim(),
+    descProducto:   (document.getElementById('lc-desc-producto')?.value    || '').trim()
   };
 }
 
@@ -1958,8 +1975,11 @@ function lcSaveConfig() {
 function lcLoadConfig() {
   let cfg = {};
   try { cfg = JSON.parse(localStorage.getItem(LS_LC) || '{}'); } catch (_) {}
-  if (cfg.country)    { const el = document.getElementById('lc-country');         if (el) el.value = cfg.country; }
-  if (cfg.timeFormat) { const el = document.getElementById('lc-time-format');     if (el) el.value = cfg.timeFormat; }
+  if (cfg.country)        { const el = document.getElementById('lc-country');          if (el) el.value = cfg.country; }
+  if (cfg.timeFormat)     { const el = document.getElementById('lc-time-format');      if (el) el.value = cfg.timeFormat; }
+  if (cfg.tipo)           { const el = document.getElementById('lc-tipo');             if (el) el.value = cfg.tipo; }
+  if (cfg.nombreProducto) { const el = document.getElementById('lc-nombre-producto');  if (el) el.value = cfg.nombreProducto; }
+  if (cfg.descProducto)   { const el = document.getElementById('lc-desc-producto');    if (el) el.value = cfg.descProducto; }
   if (cfg.fillerPerMin !== undefined) {
     const el = document.getElementById('lc-filler-per-min');
     if (el) { el.value = cfg.fillerPerMin; lcUpdateFillerLabel(cfg.fillerPerMin); }
@@ -2255,6 +2275,34 @@ function lcCopyCSV() {
     .catch(() => showToast('Error al copiar', 'error'));
 }
 
+// ── Compresión de imagen por canvas (sin dependencias) ────
+function lcCompressImage(file, maxPx = 200, quality = 0.75) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(maxPx / img.width, maxPx / img.height, 1);
+      const w     = Math.round(img.width  * scale);
+      const h     = Math.round(img.height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width  = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      // Fondo blanco (por si la imagen tiene transparencia)
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+      canvas.toBlob(blob => {
+        if (blob) resolve(blob);
+        else reject(new Error('No se pudo comprimir la imagen'));
+      }, 'image/jpeg', quality);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('No se pudo leer la imagen')); };
+    img.src = url;
+  });
+}
+
 // ── Upload Avatar ─────────────────────────────────────────
 const _lcUploadSel = { gender: '', age: '' };
 
@@ -2312,22 +2360,29 @@ async function lcUploadAvatar() {
   if (!sb) { setStatus('❌ Supabase no disponible — recarga la página', '#ff5166'); return; }
 
   if (btn) btn.disabled = true;
-  setStatus('⏳ Subiendo imagen...');
+  setStatus('⏳ Comprimiendo imagen...');
 
-  const file = fileInput.files[0];
-  const ext  = (file.name.split('.').pop() || 'jpg').toLowerCase().replace('jpeg','jpg');
-  const safe = country.replace(/[^a-zA-Z]/g, '');
-  const filename = `avatars/${gender}_${ageGroup}_${safe}_${Date.now()}.${ext}`;
+  const file   = fileInput.files[0];
+  const safe   = country.replace(/[^a-zA-Z]/g, '');
+  const filename = `avatars/${gender}_${ageGroup}_${safe}_${Date.now()}.jpg`;
   const BUCKET   = 'fakelive-avatars';
 
   try {
-    // 1. Crear bucket si no existe (silencia error si ya existe)
+    // 1. Comprimir a 200×200 JPEG q75 — reduce peso hasta 10× antes de subir
+    const compressed = await lcCompressImage(file, 200, 0.75);
+    const originalKB  = Math.round(file.size / 1024);
+    const compressedKB = Math.round(compressed.size / 1024);
+    console.log(`[Upload] ${originalKB}KB → ${compressedKB}KB (${Math.round(compressedKB/originalKB*100)}%)`);
+
+    setStatus('⏳ Subiendo...');
+
+    // 2. Crear bucket si no existe (silencia error si ya existe)
     await sb.storage.createBucket(BUCKET, { public: true }).catch(() => {});
 
-    // 2. Subir imagen
+    // 3. Subir imagen comprimida
     const { error: uploadErr } = await sb.storage
       .from(BUCKET)
-      .upload(filename, file, { contentType: file.type, upsert: true });
+      .upload(filename, compressed, { contentType: 'image/jpeg', upsert: true });
     if (uploadErr) throw new Error('Storage: ' + uploadErr.message);
 
     // 3. URL pública
@@ -2380,11 +2435,13 @@ function lcOnEnter() {
   lcUpdateStatus();
 
   // Generar filler con IA en background → re-renderizar cuando listo
-  const ta      = document.getElementById('script-textarea');
-  const text    = ta?.value?.trim() || '';
-  const country = lcGetConfig().country;
+  const ta  = document.getElementById('script-textarea');
+  const text = ta?.value?.trim() || '';
+  const cfg  = lcGetConfig();
   if (text) {
-    lcGenerateAiFiller(text, country).then(() => {
+    lcGenerateAiFiller(text, cfg.country, {
+      tipo: cfg.tipo, nombreProducto: cfg.nombreProducto, descProducto: cfg.descProducto
+    }).then(() => {
       if (_lcAiFillerPool && _lcAiFillerPool.length > 0) {
         lcRenderPreview(); // ahora con comentarios IA contextuales
       }
@@ -2401,8 +2458,11 @@ sbNavTo = function (section) {
 
 // ── Bindings ─────────────────────────────────────────────
 function lcBindAll() {
-  ['lc-country', 'lc-time-format'].forEach(id => {
-    document.getElementById(id)?.addEventListener('change', lcRenderPreview);
+  ['lc-country', 'lc-time-format', 'lc-tipo'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', () => { lcSaveConfig(); lcRenderPreview(); });
+  });
+  ['lc-nombre-producto', 'lc-desc-producto'].forEach(id => {
+    document.getElementById(id)?.addEventListener('input', lcSaveConfig);
   });
 
   document.getElementById('lc-filler-per-min')?.addEventListener('input', e => {
@@ -2415,11 +2475,13 @@ function lcBindAll() {
     _lcAiFillerPool = null;
     _lcAiScriptKey  = '';
     lcRenderPreview();
-    const ta      = document.getElementById('script-textarea');
-    const text    = ta?.value?.trim() || '';
-    const country = lcGetConfig().country;
+    const ta   = document.getElementById('script-textarea');
+    const text = ta?.value?.trim() || '';
+    const cfg  = lcGetConfig();
     if (text) {
-      lcGenerateAiFiller(text, country).then(() => {
+      lcGenerateAiFiller(text, cfg.country, {
+        tipo: cfg.tipo, nombreProducto: cfg.nombreProducto, descProducto: cfg.descProducto
+      }).then(() => {
         if (_lcAiFillerPool && _lcAiFillerPool.length > 0) lcRenderPreview();
       });
     }

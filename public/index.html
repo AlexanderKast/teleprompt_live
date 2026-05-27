@@ -827,6 +827,35 @@ EJEMPLO:
             </div>
           </div>
 
+          <!-- Contexto del producto / servicio para IA -->
+          <div style="border-top:1px solid rgba(255,255,255,0.06);padding-top:12px;margin-top:12px;">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:rgba(228,225,240,0.35);margin-bottom:10px;">Contexto del producto para la IA</div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+              <div class="sb-field-group" style="margin:0;">
+                <label class="sb-label">Tipo de oferta</label>
+                <div style="position:relative;">
+                  <select id="lc-tipo" class="sb-select">
+                    <option value="producto">🛍 Producto físico</option>
+                    <option value="servicio">🔧 Servicio</option>
+                    <option value="curso">🎓 Curso / Capacitación</option>
+                    <option value="infoproducto">💻 Infoproducto / Digital</option>
+                  </select>
+                  <span class="material-symbols-outlined sb-select-icon">expand_more</span>
+                </div>
+              </div>
+              <div class="sb-field-group" style="margin:0;">
+                <label class="sb-label">Nombre del producto</label>
+                <input id="lc-nombre-producto" type="text" class="sb-input" placeholder="Ej: Crema antienvejecimiento XYZ" style="width:100%;">
+              </div>
+            </div>
+
+            <div class="sb-field-group">
+              <label class="sb-label">Descripción breve (para la IA)</label>
+              <textarea id="lc-desc-producto" class="sb-input" rows="2" placeholder="Ej: Crema con retinol y vitamina C para reducir arrugas. Precio $89.000. Envío gratis. Garantía 30 días." style="width:100%;resize:vertical;font-size:12px;line-height:1.5;"></textarea>
+            </div>
+          </div>
+
           <button id="btn-lc-regenerate" class="sb-btn-secondary" style="width:100%;margin-top:6px;">
             🔄 Actualizar preview
           </button>
