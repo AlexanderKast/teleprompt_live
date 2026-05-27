@@ -315,17 +315,6 @@
               </div>
             </div>
             <div class="sb-field-group">
-              <label class="sb-label">Velocidad de avance</label>
-              <div style="position:relative;">
-                <select id="select-speed" class="sb-select">
-                  <option value="slow">Lento (0.75×)</option>
-                  <option value="normal" selected>Normal (1.0×)</option>
-                  <option value="fast">Rápido (1.5×)</option>
-                </select>
-                <span class="material-symbols-outlined sb-select-icon">expand_more</span>
-              </div>
-            </div>
-            <div class="sb-field-group">
               <label class="sb-label">Modo comentarios</label>
               <div style="position:relative;">
                 <select id="select-comment-mode" class="sb-select">
@@ -555,14 +544,6 @@
             </div>
           </div>
 
-          <div class="sb-field-group">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-              <label class="sb-label" style="margin:0;">Velocidad de avance</label>
-              <span id="speed-slider-label" style="font-size:12px;font-weight:700;color:#eac32b;font-family:'JetBrains Mono',monospace;">1.0x</span>
-            </div>
-            <input id="speed-slider" type="range" min="0.5" max="2.0" step="0.1" value="1.0" class="sb-slider"/>
-          </div>
-
           <div class="sb-toggle-row">
             <span class="sb-toggle-label">Modo espejo (flip horizontal)</span>
             <label class="sb-toggle"><input type="checkbox" id="setting-mirror"/><span class="sb-toggle-track"></span></label>
@@ -770,6 +751,25 @@ EJEMPLO:
       </div>
       <div class="sb-cards-col">
 
+        <!-- ── Card 0: Checklist de requisitos ── -->
+        <div class="sb-card">
+          <div class="sb-card-title" id="lc-checklist-hdr" style="cursor:pointer;user-select:none;" onclick="lcToggleChecklist()">
+            <span class="material-symbols-outlined" style="font-size:16px;color:#eac32b;">checklist</span>
+            Requisitos para LiveCake
+            <span id="lc-checklist-arrow" style="margin-left:auto;font-size:11px;color:rgba(228,225,240,0.35);transition:transform .2s;">▲</span>
+          </div>
+          <div id="lc-checklist-body">
+            <p style="font-size:11px;color:rgba(228,225,240,0.4);margin-bottom:12px;line-height:1.5;">Revisa estos pasos antes de exportar tu live simulado. Marca los que ya tienes listos.</p>
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+              <div style="flex:1;height:5px;background:rgba(255,255,255,0.07);border-radius:3px;overflow:hidden;">
+                <div id="lc-checklist-bar" style="height:100%;background:#00e475;border-radius:3px;width:0%;transition:width .3s;"></div>
+              </div>
+              <span id="lc-checklist-progress" style="font-size:10px;color:rgba(228,225,240,0.4);white-space:nowrap;">0/12 completados</span>
+            </div>
+            <div id="lc-checklist-items" style="display:flex;flex-direction:column;gap:6px;"></div>
+          </div>
+        </div>
+
         <!-- ── Card 1: Configuración ── -->
         <div class="sb-card">
           <div class="sb-card-title">
@@ -858,6 +858,7 @@ EJEMPLO:
           <div class="lc-status-chips" id="lc-status-chips">
             <span class="lc-chip" id="lc-chip-nano">⚙️ Gemini IA: cargando...</span>
             <span class="lc-chip" id="lc-chip-sb">⏳ Avatares DB: cargando...</span>
+            <span class="lc-chip" id="lc-chip-ai">🤖 Comentarios IA: en espera</span>
           </div>
 
           <p style="font-size:10px;color:rgba(228,225,240,0.3);margin:6px 0 10px;text-align:center;">

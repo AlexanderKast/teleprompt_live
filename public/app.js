@@ -11,7 +11,7 @@
 const LS_SCRIPT   = 'fakelive_script';
 const LS_SETTINGS = 'fakelive_settings';
 
-const SPEED_MUL = { slow: 0.75, normal: 1.0, fast: 1.5 };
+// Velocidad fija 1.0× — siempre conforme al tiempo del guion
 
 const BLOCK_RE = /^(\d{1,2}):(\d{2})\s+\[(GUION|COMENTARIO|RESPONDER|ACCION|MOSTRAR|PAUSA)\]\s+([\s\S]+)/;
 
@@ -72,7 +72,6 @@ const state = {
   visibleComments: [],
   settings: {
     fontSize:    'medium',
-    speed:       'normal',
     commentMode: 'side'
   }
 };
@@ -206,7 +205,7 @@ function getElapsed() {
 
 function tick() {
   const elapsed     = getElapsed();
-  const scriptTime  = elapsed * SPEED_MUL[state.settings.speed];
+  const scriptTime  = elapsed; // velocidad 1:1 con el guion
 
   updateTimerDisplay(elapsed);
   updateProgressFill(scriptTime);
@@ -275,7 +274,7 @@ function jumpTo(idx) {
   if (idx < 0 || idx >= state.blocks.length) return;
   const block = state.blocks[idx];
   state.currentIdx     = idx;
-  state.elapsedAtPause = block.time / SPEED_MUL[state.settings.speed];
+  state.elapsedAtPause = block.time; // velocidad 1:1
   if (state.isPlaying) state.startTime = Date.now();
 
   // Rebuild visible comments up to this point
@@ -499,10 +498,8 @@ function applyCommentMode() {
 
 function applySettingsToUI() {
   const fs = document.getElementById('select-font-size');
-  const sp = document.getElementById('select-speed');
   const cm = document.getElementById('select-comment-mode');
   if (fs) fs.value = state.settings.fontSize;
-  if (sp) sp.value = state.settings.speed;
   if (cm) cm.value = state.settings.commentMode;
 }
 
@@ -539,10 +536,6 @@ function bindEvents() {
   // Settings selects
   document.getElementById('select-font-size').addEventListener('change', e => {
     state.settings.fontSize = e.target.value;
-    saveSettings();
-  });
-  document.getElementById('select-speed').addEventListener('change', e => {
-    state.settings.speed = e.target.value;
     saveSettings();
   });
   document.getElementById('select-comment-mode').addEventListener('change', e => {
@@ -1233,10 +1226,6 @@ function sbLoadStreamSettings() {
       document.getElementById('setting-player-bg').value              = d.playerBg;
       document.getElementById('setting-player-bg-label').textContent  = d.playerBg;
     }
-    if (d.speedSlider) {
-      const sl = document.getElementById('speed-slider');
-      if (sl) { sl.value = d.speedSlider; document.getElementById('speed-slider-label').textContent = parseFloat(d.speedSlider).toFixed(1) + 'x'; }
-    }
     sbApplyStreamSettings();
   } catch(_) {}
 }
@@ -1248,7 +1237,6 @@ function sbSaveStreamSettings() {
     autoPause:   document.getElementById('setting-auto-pause')?.checked,
     shortcuts:   document.getElementById('setting-show-shortcuts')?.checked,
     playerBg:    document.getElementById('setting-player-bg')?.value,
-    speedSlider: document.getElementById('speed-slider')?.value
   };
   localStorage.setItem(LS_STREAM, JSON.stringify(d));
   sbApplyStreamSettings();
@@ -1266,11 +1254,6 @@ function sbApplyStreamSettings() {
     const bc = document.getElementById('blocks-container');
     if (bc) bc.style.background = bg;
   }
-  // Speed slider → select-speed
-  const sliderVal = parseFloat(document.getElementById('speed-slider')?.value || '1');
-  const speedPreset = sliderVal < 0.9 ? 'slow' : sliderVal < 1.3 ? 'normal' : 'fast';
-  const ss = document.getElementById('select-speed');
-  if (ss && ss.value !== speedPreset) { ss.value = speedPreset; state.settings.speed = speedPreset; }
   // Font size segmented → select-font-size
   const activeSegVal = document.querySelector('#segmented-fontsize .sb-seg-active')?.dataset?.val;
   if (activeSegVal) {
@@ -1513,12 +1496,6 @@ function sbBindAll() {
     document.getElementById('setting-player-bg-label').textContent = e.target.value;
     sbSaveStreamSettings();
   });
-  // Speed slider
-  document.getElementById('speed-slider')?.addEventListener('input', e => {
-    document.getElementById('speed-slider-label').textContent = parseFloat(e.target.value).toFixed(1) + 'x';
-    sbSaveStreamSettings();
-  });
-
   // Font size segmented control
   document.querySelectorAll('#segmented-fontsize .sb-seg-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1695,45 +1672,83 @@ const LC_CITIES = {
 };
 ['Perú','República Dominicana','Cuba','España'].forEach(c => LC_CITIES[c] = LC_CITIES.Otro);
 
-// ── Pools de comentarios ──────────────────────────────────
+// ── Pools de comentarios (fallback estático) ─────────────
 const LC_FILLER = [
-  'Estoy desde [CITY]','Saludos!','Eres muy linda','Gracias por toda esta información de valor',
-  'Me encantan tus tips','No sabía que eso lo podía hacer','Wuao!','Hola!','Estoy en el live',
+  'Estoy desde [CITY]','Saludos!','Eres muy linda ❤️','Gracias por toda esta información de valor',
+  'Me encantan tus tips','No sabía que eso lo podía hacer','Wuao!','Hola!','Estoy en el Live',
   'Explicas muy bien','Soy seguidora tuya hace rato','Te sigo desde hace poco y me gusta tu contenido',
-  'Yo quiero aprender eso','Me encanta tu energía','¡Siempre aprendo algo contigo!',
-  'Qué claridad para explicar, gracias','Te admiro muchísimo','Estoy lista para tomar acción',
-  '¡Qué buena información!','Compartiendo con mis amigos'
+  'Me encanta tu energía','¡Siempre aprendo algo contigo!','Qué claridad para explicar, gracias',
+  'Te admiro muchísimo','Estoy lista para tomar acción','Me inspiras a trabajar más en mis metas',
+  'Gracias por motivarnos siempre','¡Eres un ejemplo para nosotros!',
+  'Estoy invitando a mis amigos a este Live','Estoy lista para cambiar mi vida',
+  'Gracias por compartir lo que sabes, no todos lo hacen','Yo pensé que se necesitaba mucho dinero',
+  'Me gusta tu vestido ¿dónde lo compraste?','te veo desde Los Ángeles',
+  'ya separé mi cupo 🙌','ya compré 🎉','Yo quiero aprender eso',
+  'Qué orgullo ver una latina triunfando','Gracias por despertar esa mentalidad en mí',
+  'No tengo mucho dinero ¿por dónde empiezo?','¿Cuánto debería ahorrar para empezar?',
+  'Yo también quiero esa libertad','¡Qué buena energía tienes!'
 ];
 const LC_TESTIMONIAL = [
-  'Ya compré, recomendado 100%','Sí funciona','Ya compré y estoy feliz con el resultado',
-  'Un servicio muy completo','Aprendí muchísimo','Nunca pensé que fuera tan fácil, gracias',
-  'Esto sí funciona, no es teoría, son pasos reales','Mi mentalidad cambió completamente',
-  'Literalmente me abriste los ojos','Lo mejor que he invertido este año',
-  'Entré sin saber nada y ahora ya estoy viendo resultados','Tu energía y claridad no tienen comparación',
-  'Pensé que esto era muy difícil, ahora sé que también es para mí',
-  'No es solo un producto, es un cambio de mentalidad','Salí motivada y con plan de acción claro'
+  'Ya compré recomendado 100%','Sí funciona','Un evento muy completo','Aprendí muchísimo',
+  'Nunca pensé entender esto tan fácil, gracias','Esto sí funciona, no es teoría, son pasos reales',
+  'Mi mentalidad cambió completamente','Literalmente abriste mis ojos a otro mundo',
+  'Lo mejor que he invertido este año','Entré sin saber nada y ahora ya estoy invirtiendo',
+  'Tu energía y claridad no tienen comparación, gracias','Mis respetos, nunca había aprendido así',
+  'Pensé que esto era para millonarios, ahora sé que también es para mí',
+  'No es solo un curso, es un cambio de mentalidad','Gracias por compartir lo que otros no enseñan',
+  'Ahora sí me veo logrando mis metas','Salí motivada y con plan de acción claro',
+  'El valor que recibí fue muchísimo más de lo que pagué',
+  'Antes veía esto imposible, hoy lo veo alcanzable','Te guía paso a paso, así sí da gusto aprender',
+  'ya invertí y estoy feliz con el resultado 🙌'
 ];
 const LC_FAQ = [
-  '¿Cuánto cuesta?','¿Tienen garantía?','¿Cómo hago para comprar?','¿Funciona para Colombia?',
-  '¿Tienen envíos a toda Colombia?','¿Cuánto tarda el envío?','¿Puedo pagar con Nequi?',
-  '¿Tienen página web?','¿Es seguro comprar aquí?','¿Qué métodos de pago aceptan?',
-  '¿Tienen descuentos?','¿Hay stock disponible?','¿Hacen devoluciones?',
-  '¿Puedo comprar por WhatsApp?','¿Cuándo es el próximo live?','¿Venden al por mayor?'
+  '¿Cuánto cuesta la entrada al evento?','¿Qué incluye la entrada VIP?',
+  '¿Cuál es la diferencia del general y el VIP?','¿Cuándo será la próxima Masterclass?',
+  '¿Dónde puedo comprar mi entrada?','¿Dónde se realizará el evento?',
+  '¿Qué aprenderé en esta Masterclass?','¿Puedo pagar con Zelle?','¿Quedará grabado?',
+  '¿Necesito experiencia previa para asistir?','¿Cuántos cupos hay disponibles para el VIP?',
+  '¿Recibiré certificado de participación?','¿Puedo hacer preguntas en vivo?',
+  '¿Cuánto capital mínimo necesito para empezar?','¿Tienen garantía?',
+  '¿Puedo pagar con Nequi?','¿Puedo comprar por WhatsApp?','¿Venden al por mayor?',
+  '¿Es seguro comprar aquí?','¿Qué métodos de pago aceptan?','¿Hacen devoluciones?',
+  '¿Puedo asistir si estoy en otro país?','¿Hay algún descuento disponible?'
 ];
 const LC_INTEREST = [
-  '¿Dónde puedo conseguir más información?','¿Cómo puedo empezar?',
-  '¿Esto aplica para alguien sin experiencia?','¿Con cuánto dinero puedo empezar?',
-  '¿Cuánto tiempo toma ver resultados?','¿Necesito conocimientos previos?',
-  '¿Tienen algún curso o capacitación?','¿Puedo hacer esto desde casa?',
-  '¿Funciona para cualquier persona?','¿Me pueden asesorar personalmente?'
+  '¿Cómo puedo empezar sin experiencia?','¿Funciona esto para alguien como yo?',
+  '¿Cuánto tiempo toma ver resultados reales?','¿Esto aplica si vivo fuera del país?',
+  '¿Necesito capital grande para empezar?','¿Cuándo vas a hacer otro live de este tema?',
+  '¿Dónde puedo conseguir más información?','¿Con cuánto dinero puedo empezar exactamente?',
+  '¿Están listo para que el dinero trabaje para ti?','¿Cómo lo hacen los que ya tienen resultados?',
+  '¿Necesito conocimientos previos?','¿Puedo hacer esto desde casa?',
+  '¿Funciona para cualquier persona?','¿Me pueden asesorar personalmente?',
+  '¿Hay algún programa de mentoría?','¿En cuánto tiempo recupero la inversión?'
+];
+
+// ── Checklist de requisitos LiveCake ─────────────────────
+const LC_CHECKLIST = [
+  { id: 'pancake',  label: 'Cuenta en Pancake con suscripción activa'           },
+  { id: 'webcake',  label: 'Creación de cuenta en WebCake'                      },
+  { id: 'dominio',  label: 'Dominio comprado para publicar el live simulado'    },
+  { id: 'pixel',    label: 'ID del Pixel de Meta o TikTok'                      },
+  { id: 'token',    label: 'Token del API de conversión (Meta o TikTok)'        },
+  { id: 'poscake',  label: 'Cuenta en Poscake activa'                           },
+  { id: 'producto', label: 'Producto definido con título y descripción'         },
+  { id: 'ofertas',  label: 'Ofertas, descuentos o cupones creados'              },
+  { id: 'imagenes', label: 'Imágenes del producto subidas a LiveCake'           },
+  { id: 'video',    label: 'Video del live simulado creado'                     },
+  { id: 'gmail',    label: 'Cuenta de Gmail para integraciones de datos'        },
+  { id: 'gsheet',   label: 'Google Sheet de comentarios completado'             },
 ];
 
 // ── Estado del módulo ─────────────────────────────────────
-const LS_LC = 'fakelive_livecake';
-let _lcComments   = [];   // lista generada actual
-let _lcAvatarMap  = {};   // username → url
-let _lcDbAvatars  = null; // null = sin cargar, [] = cargado (vacío o con datos)
-let _lcNamesSeeds = {};   // username → assigned display name
+const LS_LC           = 'fakelive_livecake';
+const LS_LC_CHECKLIST = 'fakelive_lc_checklist';
+let _lcComments      = [];   // lista generada actual
+let _lcAvatarMap     = {};   // username → url
+let _lcDbAvatars     = null; // null = sin cargar, [] = cargado (vacío o con datos)
+let _lcNamesSeeds    = {};   // username → assigned display name
+let _lcAiFillerPool  = null; // [] cuando la IA generó comentarios; null = no generado aún
+let _lcAiScriptKey   = '';   // hash del script para invalidar caché de IA
 
 // ── Helpers ───────────────────────────────────────────────
 function lcRand(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
@@ -1754,19 +1769,132 @@ function lcFormatTime(totalSec, format) {
     const s = String(totalSec % 60).padStart(2, '0');
     return `${m}:${s}`;
   }
-  if (format === 'hace_min') {
-    const m = Math.max(1, Math.floor(totalSec / 60));
-    return `Hace ${m} minuto${m === 1 ? '' : 's'}`;
+  // Todos los formatos de texto siempre en segundos (nunca cambiar a minutos)
+  const s = Math.max(1, Math.round(totalSec));
+  return `Hace ${s} segundo${s === 1 ? '' : 's'}`;
+}
+
+// ── Checklist ─────────────────────────────────────────────
+function lcRenderChecklist() {
+  const container = document.getElementById('lc-checklist-items');
+  if (!container) return;
+  let checked = {};
+  try { checked = JSON.parse(localStorage.getItem(LS_LC_CHECKLIST) || '{}'); } catch (_) {}
+  container.innerHTML = '';
+  LC_CHECKLIST.forEach(item => {
+    const isDone = !!checked[item.id];
+    const div = document.createElement('div');
+    div.style.cssText = 'display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:7px;background:rgba(255,255,255,0.03);cursor:pointer;';
+    div.innerHTML = `
+      <span style="font-size:16px;flex-shrink:0;transition:all .15s;">${isDone ? '✅' : '⭕'}</span>
+      <span style="font-size:12px;color:${isDone ? 'rgba(228,225,240,0.7)' : 'rgba(228,225,240,0.45)'};text-decoration:${isDone ? 'line-through' : 'none'};flex:1;line-height:1.4;">${item.label}</span>`;
+    div.addEventListener('click', () => {
+      checked[item.id] = !checked[item.id];
+      try { localStorage.setItem(LS_LC_CHECKLIST, JSON.stringify(checked)); } catch (_) {}
+      lcRenderChecklist();
+    });
+    container.appendChild(div);
+  });
+  // Progreso
+  const done  = Object.values(checked).filter(Boolean).length;
+  const total = LC_CHECKLIST.length;
+  const pct   = Math.round((done / total) * 100);
+  const bar   = document.getElementById('lc-checklist-bar');
+  const lbl   = document.getElementById('lc-checklist-progress');
+  if (bar) bar.style.width = pct + '%';
+  if (lbl) lbl.textContent = `${done}/${total} completados`;
+}
+
+function lcToggleChecklist() {
+  const body  = document.getElementById('lc-checklist-body');
+  const arrow = document.getElementById('lc-checklist-arrow');
+  if (!body) return;
+  const isOpen = body.style.display !== 'none';
+  body.style.display  = isOpen ? 'none' : '';
+  if (arrow) arrow.textContent = isOpen ? '▼' : '▲';
+}
+
+// ── Generación de filler con IA (Gemini) ─────────────────
+// Async — genera comentarios contextuales al guion y los cachea
+async function lcGenerateAiFiller(scriptText, country) {
+  const key = (scriptText || '').slice(0, 200) + country;
+  if (_lcAiFillerPool !== null && _lcAiScriptKey === key) return; // ya cacheado
+
+  const geminiKey = localStorage.getItem('fakelive_gemini_key') || '';
+  const chipEl    = document.getElementById('lc-chip-ai');
+
+  if (!geminiKey) {
+    _lcAiFillerPool = [];
+    if (chipEl) { chipEl.className = 'lc-chip lc-chip-warn'; chipEl.textContent = '🟡 IA comentarios: sin Gemini key'; }
+    return;
   }
-  if (format === 'mixto') {
-    if (totalSec < 60) return `Hace ${Math.max(1, totalSec)} segundo${totalSec === 1 ? '' : 's'}`;
-    const m = Math.floor(totalSec / 60);
-    return `Hace ${m} minuto${m === 1 ? '' : 's'}`;
+
+  if (chipEl) { chipEl.className = 'lc-chip'; chipEl.textContent = '🤖 IA: generando comentarios...'; }
+
+  // Extraer tema del guion (primeros bloques GUION)
+  const topicLines = (scriptText || '').split('\n')
+    .filter(l => /\[GUION\]/.test(l))
+    .slice(0, 4)
+    .map(l => l.replace(/^\d+:\d+\s+\[GUION\]\s+/, '').trim())
+    .join('. ');
+
+  if (!topicLines.trim()) {
+    _lcAiFillerPool = [];
+    if (chipEl) { chipEl.className = 'lc-chip lc-chip-warn'; chipEl.textContent = '🟡 IA: sin contenido en guion'; }
+    return;
   }
-  // hace_seg (default)
-  if (totalSec < 60) return `Hace ${Math.max(1, totalSec)} segundo${totalSec === 1 ? '' : 's'}`;
-  const m = Math.floor(totalSec / 60);
-  return `Hace ${m} minuto${m === 1 ? '' : 's'}`;
+
+  const prompt = `Eres un generador de comentarios auténticos para un live de ventas en redes sociales latinoamericanas.
+
+El live trata sobre: "${topicLines.slice(0, 400)}"
+País del live: ${country}
+
+Genera EXACTAMENTE 60 comentarios de espectadores mezclando estos tipos:
+- INTERÉS (15): preguntas que generan curiosidad y deseo sobre el tema
+- FAQ (15): preguntas frecuentes sobre precio, proceso, garantía, fechas
+- TESTIMONIAL (15): testimonios positivos de compradores anteriores
+- RELLENO (15): comentarios casuales de engagement y seguimiento
+
+REGLAS OBLIGATORIAS:
+- Lenguaje natural e informal, español latinoamericano coloquial
+- Máximo 15 palabras por comentario
+- Adaptados específicamente al tema del live (NO genéricos)
+- Variados, sin repetir frases
+- Sin hashtags ni links
+- Algunos con emojis naturales (no forzados)
+
+Responde SOLO con el JSON array, sin texto adicional ni bloques de código:
+[{"text":"comentario aquí","type":"interest"},{"text":"otro comentario","type":"faq"}]`;
+
+  try {
+    const r = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+      {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.95, maxOutputTokens: 3000 }
+        }),
+        signal: AbortSignal.timeout(20000)
+      }
+    );
+    if (!r.ok) throw new Error(`Gemini HTTP ${r.status}`);
+    const data = await r.json();
+    const raw  = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const jsonMatch = raw.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) throw new Error('JSON no encontrado en respuesta');
+    const parsed = JSON.parse(jsonMatch[0]);
+    if (!Array.isArray(parsed) || parsed.length < 5) throw new Error('Respuesta inválida');
+    _lcAiFillerPool  = parsed;
+    _lcAiScriptKey   = key;
+    if (chipEl) { chipEl.className = 'lc-chip lc-chip-ok'; chipEl.textContent = `🟢 IA: ${parsed.length} comentarios generados`; }
+    console.log(`[LC] IA generó ${parsed.length} comentarios de relleno`);
+  } catch (e) {
+    console.warn('[LC] AI filler falló:', e.message, '→ usando pools estáticos');
+    _lcAiFillerPool = []; // pool vacío = usar estáticos
+    if (chipEl) { chipEl.className = 'lc-chip lc-chip-warn'; chipEl.textContent = '🟡 IA: error — usando pool estático'; }
+  }
 }
 
 // ── Helpers de avatar DB ──────────────────────────────────
@@ -1878,14 +2006,19 @@ function lcBuildCommentList() {
   const scriptedNames = new Set(scripted.map(c => c.username));
 
   // 5. Generar filler distribuido entre los reales
-  const country     = cfg.country;
-  const cities      = LC_CITIES[country] || LC_CITIES.Otro;
-  const fillerPools = [
-    ...LC_FILLER.map(t      => ({ text: t, type: 'filler'      })),
-    ...LC_TESTIMONIAL.map(t => ({ text: t, type: 'testimonial' })),
-    ...LC_FAQ.map(t         => ({ text: t, type: 'faq'         })),
-    ...LC_INTEREST.map(t    => ({ text: t, type: 'interest'    }))
-  ];
+  const country = cfg.country;
+  const cities  = LC_CITIES[country] || LC_CITIES.Otro;
+
+  // Usar pool de IA si está disponible; si no, fallback a pools estáticos
+  const useAi      = Array.isArray(_lcAiFillerPool) && _lcAiFillerPool.length > 0;
+  const fillerPools = useAi
+    ? _lcAiFillerPool.map(c => ({ text: c.text || String(c), type: c.type || 'filler' }))
+    : [
+      ...LC_FILLER.map(t      => ({ text: t, type: 'filler'      })),
+      ...LC_TESTIMONIAL.map(t => ({ text: t, type: 'testimonial' })),
+      ...LC_FAQ.map(t         => ({ text: t, type: 'faq'         })),
+      ...LC_INTEREST.map(t    => ({ text: t, type: 'interest'    }))
+    ];
   const totalFiller = Math.round(rate * durationMin);
   const nameCount   = {};
   const recentFirst = [];
@@ -2127,8 +2260,21 @@ function lcOnEnter() {
   lcLoadConfig();
   lcAutoDetectDuration();
   lcSendConfigToServer();
-  lcRenderPreview();
+  lcRenderChecklist();
+  lcRenderPreview();   // render inmediato con pool estático
   lcUpdateStatus();
+
+  // Generar filler con IA en background → re-renderizar cuando listo
+  const ta      = document.getElementById('script-textarea');
+  const text    = ta?.value?.trim() || '';
+  const country = lcGetConfig().country;
+  if (text) {
+    lcGenerateAiFiller(text, country).then(() => {
+      if (_lcAiFillerPool && _lcAiFillerPool.length > 0) {
+        lcRenderPreview(); // ahora con comentarios IA contextuales
+      }
+    });
+  }
 }
 
 // ── Parche sbNavTo para lazy-load ─────────────────────────
@@ -2149,7 +2295,20 @@ function lcBindAll() {
     lcRenderPreview();
   });
 
-  document.getElementById('btn-lc-regenerate')?.addEventListener('click', lcRenderPreview);
+  document.getElementById('btn-lc-regenerate')?.addEventListener('click', () => {
+    // Limpiar caché de IA para forzar regeneración con el guion actual
+    _lcAiFillerPool = null;
+    _lcAiScriptKey  = '';
+    lcRenderPreview();
+    const ta      = document.getElementById('script-textarea');
+    const text    = ta?.value?.trim() || '';
+    const country = lcGetConfig().country;
+    if (text) {
+      lcGenerateAiFiller(text, country).then(() => {
+        if (_lcAiFillerPool && _lcAiFillerPool.length > 0) lcRenderPreview();
+      });
+    }
+  });
   document.getElementById('btn-lc-download')?.addEventListener('click',   lcDownloadCSV);
   document.getElementById('btn-lc-copy')?.addEventListener('click',       lcCopyCSV);
 
