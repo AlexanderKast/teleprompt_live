@@ -1997,54 +1997,88 @@ async function lcGenerateAiFiller(scriptText, country, productoCtx = {}) {
 
   if (chipEl) { chipEl.className = 'lc-chip'; chipEl.textContent = '🤖 IA: generando comentarios...'; }
 
-  // Extraer extracto del guion (primeros bloques GUION)
-  const topicLines = (scriptText || '').split('\n')
-    .filter(l => /\[GUION\]/.test(l))
-    .slice(0, 5)
-    .map(l => l.replace(/^\d+:\d+\s+\[GUION\]\s+/, '').trim())
-    .join('. ');
+  // ── Analizar el guion completo por fases para contexto profundo ──
+  const allBlocks   = window.parseScript(scriptText || '');
+  const guionBlocks = allBlocks.filter(b => b.type === 'GUION');
 
-  if (!topicLines.trim()) {
+  if (!guionBlocks.length) {
     _lcAiFillerPool    = [];
     _lcAiFillerLoading = false;
     if (chipEl) { chipEl.className = 'lc-chip lc-chip-warn'; chipEl.textContent = '🟡 IA: sin contenido en guion'; }
     return;
   }
 
+  const scriptMaxSec = allBlocks.length ? Math.max(...allBlocks.map(b => b.time)) : 360;
+  const saleBlockTypes = new Set(['BOOM_VENTA', 'POPUP', 'FLASH_SALE', 'CTA_COMPRA']);
+
+  // Segmentar en fases de ~7 minutos (máx 7 fases)
+  const numFases = Math.min(7, Math.max(3, Math.round(scriptMaxSec / 420)));
+  const faseLen  = Math.ceil(scriptMaxSec / numFases);
+  const fases    = [];
+
+  for (let fi = 0; fi < numFases; fi++) {
+    const start  = fi * faseLen;
+    const end    = Math.min((fi + 1) * faseLen, scriptMaxSec);
+    const blocks = allBlocks.filter(b => b.time >= start && b.time < end);
+
+    const guion = blocks
+      .filter(b => b.type === 'GUION')
+      .map(b => b.content.slice(0, 110))
+      .slice(0, 3)
+      .join(' ');
+
+    const sales = blocks
+      .filter(b => saleBlockTypes.has(b.type))
+      .map(b => `[${b.type} @${b.timeStr}] "${b.content.slice(0, 55)}"`);
+
+    const mm = t => `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+    fases.push({ start, end, label: `${mm(start)}-${mm(end)}`, guion, sales });
+  }
+
+  const fasesStr = fases.map(f => {
+    const saleNote = f.sales.length ? `\n  ⚡ VENTA: ${f.sales.join(' | ')}` : '';
+    return `[${f.label}] "${f.guion || '(transición)'}"${saleNote}`;
+  }).join('\n\n');
+
   // Mapas de etiquetas legibles
   const tipoLabel = { producto: 'producto físico', servicio: 'servicio', curso: 'curso o capacitación', infoproducto: 'infoproducto o producto digital' }[tipo] || tipo;
 
   const contextBlock = [
-    nombreProducto ? `Nombre: ${nombreProducto}` : '',
+    nombreProducto ? `Producto/servicio: ${nombreProducto}` : '',
     `Tipo: ${tipoLabel}`,
-    descProducto   ? `Descripción: ${descProducto.slice(0, 250)}` : ''
+    descProducto   ? `Descripción: ${descProducto.slice(0, 200)}` : ''
   ].filter(Boolean).join('\n');
 
-  const prompt = `Eres un generador de comentarios 100% auténticos para un live de ventas en redes sociales latinoamericanas.
+  const prompt = `Eres un generador de comentarios de espectadores para un live en redes sociales latinoamericanas.
+REGLA #1: cada comentario debe referirse a lo que se habla EN ESE MOMENTO del live — nada genérico ni fuera de contexto.
 
-═══ CONTEXTO DEL LIVE ═══
-${contextBlock}
-País del live: ${country}
-Extracto del guion: "${topicLines.slice(0, 500)}"
-═════════════════════════
+═══ PRODUCTO / SERVICIO ═══
+${contextBlock || 'Sin producto específico definido'}
+País: ${country}
+══════════════════════════
 
-Genera EXACTAMENTE 60 comentarios de espectadores reales, mezclando estos tipos:
-- INTERÉS (15): preguntas que generan curiosidad y deseo de compra. Menciona características específicas del producto/servicio.
-- FAQ (15): preguntas sobre precio, envío, garantía, plazos, modalidades de pago, proceso de compra. Usa los datos del contexto.
-- TESTIMONIAL (15): testimonios positivos y creíbles de personas que ya compraron o usaron el ${tipoLabel}. Menciona resultados concretos.
-- RELLENO (15): comentarios casuales de engagement (emojis, "estoy aquí", "qué bueno esto", "me encanta el live", saludos de ciudades).
+═══ GUION POR FASES ═══
+${fasesStr}
+═══════════════════════
 
-REGLAS ESTRICTAS:
-- Lenguaje NATURAL e informal, español latinoamericano coloquial (Colombia, ${country})
-- Máximo 12 palabras por comentario
-- ESPECÍFICOS al ${tipoLabel}${nombreProducto ? ` "${nombreProducto}"` : ''} — absolutamente NADA genérico
-- Variados, sin repetir frases ni estructuras
-- Sin hashtags ni links
-- Emojis solo donde suenen naturales (no forzados)
-- Los testimoniales deben sonar reales (nombres, ciudades, resultados)
+Genera EXACTAMENTE 60 comentarios. CADA uno necesita el campo "sec" con el segundo exacto del live en que aparece (dentro del rango de su fase).
 
-Responde SOLO con el JSON array, sin texto adicional ni bloques de código markdown:
-[{"text":"comentario aquí","type":"interest"},{"text":"otro comentario","type":"faq"},{"text":"testimonio","type":"testimonial"},{"text":"relleno casual","type":"filler"}]`;
+TIPOS Y CUÁNDO USARLOS:
+- interest (15): reacción o pregunta sobre el TEMA ESPECÍFICO de esa fase. Ejemplo: si la fase habla de "aumentar ventas con email", el comentario menciona email, ventas o ese resultado concreto.
+- faq (15): pregunta sobre precio, proceso, garantía, envío, modalidad de pago, cupos — referida al ${tipoLabel}.
+- testimonial (15): testimonio que conecta con lo dicho en esa fase — mencionar resultado o cambio concreto.
+- filler (10): engagement casual distribuido uniformemente — saludos, ciudades, emojis. SOLO este tipo puede ser genérico.
+- purchase (5): "ya compré!", "ya me inscribí!", "aproveché el descuento!" — ÚNICAMENTE dentro de ±90 seg de un evento ⚡ VENTA.
+
+REGLAS CRÍTICAS:
+- interest/faq/testimonial DEBEN mencionar algo específico de lo que se dice en su fase
+- En fases con ⚡ VENTA: al menos 3 comentarios cerca del evento deben ser de compra/precio/urgencia
+- Si no hay ⚡ VENTA en el live, omitir tipo "purchase" y redistribuir entre interest/testimonial
+- Máx 12 palabras por comentario — lenguaje informal latinoamericano de ${country}
+- Sin hashtags ni links — emojis naturales, no forzados
+
+Responde SOLO con JSON array, sin markdown ni texto adicional:
+[{"text":"comentario coherente con el tema","type":"interest","sec":245},{"text":"otro","type":"faq","sec":480}]`;
 
   // Helper: llamar Gemini con retry en 429 (rate limit)
   const callGemini = async () => {
@@ -2215,43 +2249,54 @@ function lcBuildCommentList() {
   const cities  = LC_CITIES[country] || LC_CITIES.Otro;
 
   // Usar pool de IA si está disponible; si no, fallback a pools estáticos
-  const useAi      = Array.isArray(_lcAiFillerPool) && _lcAiFillerPool.length > 0;
-  const fillerPools = useAi
-    ? _lcAiFillerPool.map(c => ({ text: c.text || String(c), type: c.type || 'filler' }))
-    : [
-      ...LC_FILLER.map(t      => ({ text: t, type: 'filler'      })),
-      ...LC_TESTIMONIAL.map(t => ({ text: t, type: 'testimonial' })),
-      ...LC_FAQ.map(t         => ({ text: t, type: 'faq'         })),
-      ...LC_INTEREST.map(t    => ({ text: t, type: 'interest'    }))
-    ];
-  const totalFiller = Math.round(rate * durationMin);
+  const useAi = Array.isArray(_lcAiFillerPool) && _lcAiFillerPool.length > 0;
+  // Detectar si la IA devolvió comentarios con timestamps (modo contextual)
+  const aiHasTimestamps = useAi && _lcAiFillerPool.some(c => typeof c.sec === 'number');
+
   const nameCount   = {};
   const recentFirst = [];
   const fillerList  = [];
 
-  for (let i = 0; i < totalFiller; i++) {
-    const sec    = Math.floor((maxSec / (totalFiller + 1)) * (i + 1));
-    const src    = lcRand(fillerPools);
-    const ftext  = src.text.replace('[CITY]', lcRand(cities));
-    const gender = Math.random() * 100 < (cfg.genderRatio ?? 70) ? 'female' : 'male';
+  // Helper: elegir nombre único (no repetir scripted, no repetir recientes, máx 2 veces)
+  function lcAssignName(gender) {
     const recent = recentFirst.slice(-4);
-    let   name;
-    let   tries  = 0;
-
-    // Elegir nombre único: no repetir scripted, no repetir recientes, máx 2 veces
+    let name; let tries = 0;
     do {
       name = lcPickName(country, gender, recent).display;
       tries++;
-    } while (tries < 30 && (
-      scriptedNames.has(name) ||
-      (nameCount[name] || 0) >= 2 ||
-      recent.includes(name.split(' ')[0])
-    ));
-
+    } while (tries < 30 && (scriptedNames.has(name) || (nameCount[name] || 0) >= 2 || recent.includes(name.split(' ')[0])));
     nameCount[name] = (nameCount[name] || 0) + 1;
     recentFirst.push(name.split(' ')[0]);
+    return name;
+  }
 
-    fillerList.push({ sec, timeStr: lcFormatTime(sec, fmt), type: src.type, username: name, text: ftext, gender });
+  if (aiHasTimestamps) {
+    // Modo contextual: la IA asignó timestamps → colocar cada comentario en su momento exacto
+    for (const aiC of _lcAiFillerPool) {
+      const sec    = Math.min(maxSec, Math.max(0, typeof aiC.sec === 'number' ? aiC.sec : 0));
+      const gender = Math.random() * 100 < (cfg.genderRatio ?? 70) ? 'female' : 'male';
+      const name   = lcAssignName(gender);
+      const ftext  = (aiC.text || '').replace('[CITY]', lcRand(cities));
+      fillerList.push({ sec, timeStr: lcFormatTime(sec, fmt), type: aiC.type || 'filler', username: name, text: ftext, gender });
+    }
+  } else {
+    // Modo distribución uniforme: pool sin timestamps o fallback estático
+    const fillerPools = useAi
+      ? _lcAiFillerPool.map(c => ({ text: c.text || String(c), type: c.type || 'filler' }))
+      : [
+        ...LC_FILLER.map(t      => ({ text: t, type: 'filler'      })),
+        ...LC_TESTIMONIAL.map(t => ({ text: t, type: 'testimonial' })),
+        ...LC_FAQ.map(t         => ({ text: t, type: 'faq'         })),
+        ...LC_INTEREST.map(t    => ({ text: t, type: 'interest'    }))
+      ];
+    const totalFiller = Math.round(rate * durationMin);
+    for (let i = 0; i < totalFiller; i++) {
+      const sec    = Math.floor((maxSec / (totalFiller + 1)) * (i + 1));
+      const src    = lcRand(fillerPools);
+      const ftext  = src.text.replace('[CITY]', lcRand(cities));
+      const gender = Math.random() * 100 < (cfg.genderRatio ?? 70) ? 'female' : 'male';
+      fillerList.push({ sec, timeStr: lcFormatTime(sec, fmt), type: src.type, username: lcAssignName(gender), text: ftext, gender });
+    }
   }
 
   // 6. Unir y ordenar cronológicamente
