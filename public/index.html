@@ -226,6 +226,10 @@
         <span class="sb-nav-icon">❓</span>
         <span class="sb-nav-label">Ayuda</span>
       </li>
+      <li class="sb-nav-item" data-section="livecake">
+        <span class="sb-nav-icon">📤</span>
+        <span class="sb-nav-label">LiveCake Export</span>
+      </li>
     </ul>
 
     <div id="sb-footer">
@@ -658,6 +662,41 @@
             🧪 Probar conexión
           </button>
           <div id="gemini-test-result" style="display:none;margin-top:10px;font-size:12px;padding:10px 12px;border-radius:8px;"></div>
+
+          <div style="border-top:1px solid rgba(255,255,255,0.07);margin:14px 0 10px;"></div>
+
+          <!-- Nanobanana API Key -->
+          <div class="sb-field-group">
+            <label class="sb-label">🍌 Nanobanana API Key (avatares IA)</label>
+            <div style="position:relative;">
+              <input id="nanobanana-key-input" type="password" placeholder="nb_..." autocomplete="off" class="sb-input" style="padding-right:38px;"/>
+              <button id="btn-toggle-nanobanana-key" type="button" title="Mostrar/ocultar"
+                style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:rgba(228,225,240,0.4);padding:2px;">
+                <span id="nanobanana-key-eye" class="material-symbols-outlined" style="font-size:18px;">visibility</span>
+              </button>
+            </div>
+            <p style="font-size:10px;color:rgba(228,225,240,0.4);margin-top:4px;">
+              <a href="https://nanobanana.io" target="_blank" style="color:#ffb3b5;text-decoration:underline;">Obtén tu clave en nanobanana.io →</a>
+            </p>
+          </div>
+
+          <!-- Supabase para LiveCake Storage -->
+          <div class="sb-field-group">
+            <label class="sb-label">☁️ Supabase URL (LiveCake Storage)</label>
+            <input id="lc-supabase-url" type="text" placeholder="https://xxxx.supabase.co" class="sb-input" autocomplete="off"/>
+          </div>
+          <div class="sb-field-group">
+            <label class="sb-label">☁️ Supabase Anon Key</label>
+            <input id="lc-supabase-anon" type="password" placeholder="eyJ..." class="sb-input" autocomplete="off"/>
+          </div>
+          <div class="sb-field-group">
+            <label class="sb-label">🔑 Supabase Service Role Key</label>
+            <input id="lc-supabase-service" type="password" placeholder="eyJ..." class="sb-input" autocomplete="off"/>
+            <p style="font-size:10px;color:rgba(255,60,90,0.65);margin-top:4px;">⚠️ Acceso total. Solo se usa en el servidor local, nunca se expone al navegador.</p>
+          </div>
+          <button id="btn-test-supabase-lc" class="sb-btn-secondary" style="width:100%;margin-top:2px;">🧪 Probar Supabase</button>
+          <div id="supabase-lc-test-result" style="display:none;margin-top:10px;font-size:12px;padding:10px 12px;border-radius:8px;"></div>
+
         </div>
 
       </div>
@@ -786,9 +825,184 @@ EJEMPLO:
           </div>
         </div>
 
+        <div class="sb-accordion">
+          <button class="sb-acc-hdr" data-acc="acc5">
+            <span>📤 Cómo usar LiveCake Export</span>
+            <span class="material-symbols-outlined sb-acc-chevron">expand_more</span>
+          </button>
+          <div id="acc5" class="sb-acc-body" style="display:none;">
+            <div class="sb-help-text">
+              <p><strong>Paso 1 — Configura las claves</strong><br/>Ve a Stream Settings → API Keys y agrega tu Nanobanana API Key (para fotos de perfil realistas) y las claves de Supabase (para almacenar las imágenes). Sin claves, la app usa DiceBear gratis.</p>
+              <p><strong>Paso 2 — Configura el export</strong><br/>En LiveCake Export selecciona el país, tipo de comentarios y comentarios de relleno por minuto. La duración se auto-detecta desde tu guion.</p>
+              <p><strong>Paso 3 — Genera avatares</strong><br/>Haz clic en "🎨 Generar avatares". La app crea fotos de perfil para cada usuario y las sube a Supabase. Verás el progreso en tiempo real.</p>
+              <p><strong>Paso 4 — Descarga el CSV</strong><br/>Haz clic en "⬇️ Descargar CSV para LiveCake". El archivo tiene 4 columnas: <code>Title</code> (nombre), <code>Content</code> (comentario), <code>Time</code> (tiempo) e <code>Image</code> (URL del avatar). Súbelo directo a LiveCake/Pancake.</p>
+              <p><strong>Modo sin imagen (gratis)</strong><br/>Si no configuras Nanobanana ni Supabase, la app genera avatares de DiceBear sin costo ni registro. Los URLs funcionan en LiveCake igual.</p>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
     <!-- /section-ayuda -->
+
+
+    <!-- ─── SECTION 6: LIVECAKE EXPORT ─── -->
+    <div id="section-livecake" class="content-section">
+      <div class="sb-section-hdr">
+        <div>
+          <h2 class="sb-section-title">LiveCake Export</h2>
+          <p class="sb-section-sub">Genera CSV con comentarios y avatares para LiveCake/Pancake</p>
+        </div>
+      </div>
+      <div class="sb-cards-col">
+
+        <!-- ── Card 1: Configuración ── -->
+        <div class="sb-card">
+          <div class="sb-card-title">
+            <span class="material-symbols-outlined" style="font-size:16px;color:#eac32b;">tune</span>
+            Configuración del Export
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div class="sb-field-group" style="margin:0;">
+              <label class="sb-label">País del live</label>
+              <div style="position:relative;">
+                <select id="lc-country" class="sb-select">
+                  <option>Colombia</option>
+                  <option>México</option>
+                  <option>Venezuela</option>
+                  <option>Ecuador</option>
+                  <option>Perú</option>
+                  <option>Argentina</option>
+                  <option>Chile</option>
+                  <option>República Dominicana</option>
+                  <option>Cuba</option>
+                  <option>España</option>
+                  <option>Otro</option>
+                </select>
+                <span class="material-symbols-outlined sb-select-icon">expand_more</span>
+              </div>
+            </div>
+            <div class="sb-field-group" style="margin:0;">
+              <label class="sb-label">Tipo de live</label>
+              <div style="position:relative;">
+                <select id="lc-live-type" class="sb-select">
+                  <option>Dropshipping</option>
+                  <option>Ecommerce</option>
+                  <option>Bienes raíces</option>
+                  <option>Masterclass</option>
+                  <option>Producto físico</option>
+                  <option>Servicio</option>
+                  <option>Otro</option>
+                </select>
+                <span class="material-symbols-outlined sb-select-icon">expand_more</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="sb-field-group">
+            <label class="sb-label">Tipo de comentarios a incluir</label>
+            <div class="lc-checks-grid">
+              <label class="sb-check-label"><input type="checkbox" class="sb-check" id="lc-chk-scripted" checked/> Del guion</label>
+              <label class="sb-check-label"><input type="checkbox" class="sb-check" id="lc-chk-filler" checked/> Relleno</label>
+              <label class="sb-check-label"><input type="checkbox" class="sb-check" id="lc-chk-testimonial" checked/> Testimoniales</label>
+              <label class="sb-check-label"><input type="checkbox" class="sb-check" id="lc-chk-faq" checked/> Preguntas</label>
+              <label class="sb-check-label"><input type="checkbox" class="sb-check" id="lc-chk-interest" checked/> Interés</label>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div class="sb-field-group" style="margin:0;">
+              <label class="sb-label">Relleno / minuto</label>
+              <input id="lc-filler-per-min" type="number" min="1" max="10" value="4" class="sb-input"/>
+            </div>
+            <div class="sb-field-group" style="margin:0;">
+              <label class="sb-label">Duración (min)</label>
+              <input id="lc-duration" type="number" min="1" max="180" value="6" class="sb-input"/>
+            </div>
+          </div>
+
+          <div class="sb-field-group">
+            <label class="sb-label">Formato de tiempo</label>
+            <div style="position:relative;">
+              <select id="lc-time-format" class="sb-select">
+                <option value="hace_seg">Hace X segundos (LiveCake estándar)</option>
+                <option value="hace_min">Hace X minutos</option>
+                <option value="mmss">MM:SS</option>
+                <option value="mixto">Mixto (auto)</option>
+              </select>
+              <span class="material-symbols-outlined sb-select-icon">expand_more</span>
+            </div>
+          </div>
+
+          <button id="btn-lc-regenerate" class="sb-btn-secondary" style="width:100%;">
+            🔄 Regenerar nombres
+          </button>
+        </div>
+
+        <!-- ── Card 2: Preview ── -->
+        <div class="sb-card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <div class="sb-card-title" style="margin:0;">
+              <span class="material-symbols-outlined" style="font-size:16px;color:#00e475;">table_view</span>
+              Vista previa
+            </div>
+            <span id="lc-preview-count" style="font-size:11px;color:rgba(228,225,240,0.45);">0 comentarios</span>
+          </div>
+          <div id="lc-preview-table" class="lc-preview-table"></div>
+          <div id="lc-preview-stats" style="font-size:11px;color:rgba(228,225,240,0.4);margin-top:8px;line-height:1.6;"></div>
+          <div id="lc-preview-warning" style="display:none;margin-top:8px;padding:8px 10px;background:rgba(234,195,43,0.1);border:1px solid rgba(234,195,43,0.2);border-radius:6px;font-size:12px;color:#eac32b;"></div>
+          <div id="lc-preview-ok" style="display:none;margin-top:8px;padding:8px 10px;background:rgba(0,228,117,0.08);border:1px solid rgba(0,228,117,0.15);border-radius:6px;font-size:12px;color:#00e475;"></div>
+        </div>
+
+        <!-- ── Card 3: Generación y Descarga ── -->
+        <div class="sb-card">
+          <div class="sb-card-title">
+            <span class="material-symbols-outlined" style="font-size:16px;color:#ff3c5a;">rocket_launch</span>
+            Generación y Descarga
+          </div>
+
+          <!-- Status chips -->
+          <div class="lc-status-chips" id="lc-status-chips">
+            <span class="lc-chip" id="lc-chip-nano">⚙️ Nanobanana: cargando...</span>
+            <span class="lc-chip" id="lc-chip-sb">⚙️ Supabase: cargando...</span>
+          </div>
+
+          <!-- Step 1: Avatares -->
+          <div class="lc-step-block" id="lc-step-1">
+            <div class="lc-step-label">1 · Generar avatares</div>
+            <button id="btn-lc-avatars" class="sb-btn-primary" style="width:100%;margin-top:8px;">
+              🎨 Generar avatares
+            </button>
+            <div id="lc-avatar-progress" style="display:none;margin-top:10px;">
+              <div class="lc-progress-bar"><div id="lc-progress-fill" class="lc-progress-fill" style="width:0%"></div></div>
+              <div id="lc-progress-label" style="font-size:11px;color:rgba(228,225,240,0.5);margin-top:4px;text-align:center;">Generando...</div>
+            </div>
+            <div id="lc-avatar-done" style="display:none;margin-top:8px;font-size:12px;color:#00e475;">✅ Avatares listos</div>
+          </div>
+
+          <!-- Step 2: Preview CSV -->
+          <div class="lc-step-block" id="lc-step-2" style="display:none;">
+            <div class="lc-step-label">2 · Revisar CSV</div>
+            <div id="lc-csv-preview" class="lc-csv-preview"></div>
+          </div>
+
+          <!-- Step 3: Descarga -->
+          <div class="lc-step-block" id="lc-step-3" style="display:none;">
+            <div class="lc-step-label">3 · Descargar</div>
+            <button id="btn-lc-download" class="sb-btn-teal" style="width:100%;margin-top:8px;">
+              ⬇️ Descargar CSV para LiveCake
+            </button>
+            <button id="btn-lc-copy" class="sb-btn-ghost-primary" style="width:100%;margin-top:8px;height:36px;font-size:13px;">
+              📋 Copiar como texto
+            </button>
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+    <!-- /section-livecake -->
 
   </div>
   <!-- /main-content -->

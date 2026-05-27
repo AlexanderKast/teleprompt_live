@@ -1681,3 +1681,612 @@ document.addEventListener('DOMContentLoaded', sbBindAll);
   };
 
 })();
+
+
+// ================================================
+// === LIVECAKE EXPORT ===
+// ================================================
+
+// ── Bases de nombres por país ─────────────────────────────
+const LC_NAMES = {
+  Colombia: {
+    female: ['Ana María','Valentina','Camila','Isabella','Sofía','Mariana','Daniela','Natalia','Paola','Andrea','Mónica','Juliana','Viviana','Alejandra','Catalina','Melissa','Luisa','Diana','Carolina','Adriana','Yesenia','Gloria','Lorena','Marcela','Xiomara','Yulieth','Leidy','Tatiana','Manuela','Lina'],
+    male:   ['Carlos','Andrés','Juan','Santiago','Sebastián','David','Felipe','Daniel','Camilo','Alejandro','Jorge','Hernán','Wilson','Édgar','Mauricio','Iván','Jhon','Ferney','Javier','Óscar','Darío','Ricardo','Fabio','Luis','Mario','Rodrigo','Giovanni','Yeison','Cristian','Esteban'],
+    last:   ['García','Martínez','López','González','Rodríguez','Pérez','Hernández','Vargas','Castro','Ruiz','Moreno','Díaz','Suárez','Torres','Ramírez','Sánchez','Reyes','Gómez','Jiménez','Medina','Rincón','Ospina','Cardona','Arias','Peña','Castaño','Montoya','Cárdenas','Zapata','Muñoz']
+  },
+  México: {
+    female: ['María','Guadalupe','Fernanda','Valeria','Paulina','Karla','Verónica','Leticia','Griselda','Esperanza','Rocío','Angélica','Brenda','Liliana','Erika','Mayra','Itzel','Yolanda','Miriam','Claudia'],
+    male:   ['José','Miguel','Alejandro','Jesús','Juan','Francisco','Roberto','Armando','Arturo','Rafael','Héctor','Gerardo','Rogelio','Alfredo','Sergio','Ernesto','Jaime','Marco','Ramón','Víctor'],
+    last:   ['González','Hernández','García','Martínez','López','Rodríguez','Pérez','Sánchez','Ramírez','Cruz','Flores','Torres','Reyes','Rivera','Morales','Jiménez','Mendoza','Álvarez','Romero','Chávez']
+  },
+  Venezuela: {
+    female: ['María','Gabriela','Andreína','Milagros','Yolanda','Adriana','Karina','Yajaira','Génesis','Verónica','Mariangel','Liseth','Yorgelys','Dayana','Roxana'],
+    male:   ['José','Luís','Carlos','Jesús','Rafael','Reinaldo','Yonathan','Wilfredo','Ángel','Johanner','Oswaldo','Gilberto','Evelio','Freddy','Leandro'],
+    last:   ['González','Pérez','Rodríguez','García','Hernández','López','Martínez','Sánchez','Díaz','Ramírez','Flores','Torres','Reyes','Morales','Jiménez']
+  },
+  Ecuador: {
+    female: ['Valeria','Gabriela','Fernanda','Daniela','Johanna','Verónica','Tatiana','Priscila','Lorena','Nataly','Adriana','Estefanía','Cristina','Mónica','Patricia'],
+    male:   ['Carlos','Santiago','Diego','Andrés','Javier','Patricio','Mauricio','Cristóbal','Esteban','Xavier','Gonzalo','Ramiro','Bolívar','Lenin','Rodrigo'],
+    last:   ['García','Pérez','Rodríguez','González','López','Martínez','Hernández','Torres','Sánchez','Ramírez','Castro','Vargas','Mora','Espinoza','Andrade']
+  },
+  Argentina: {
+    female: ['María','Florencia','Valentina','Lucía','Camila','Martina','Agustina','Sofía','Julieta','Rocío','Micaela','Celeste','Milagros','Emilia','Romina'],
+    male:   ['Matías','Facundo','Rodrigo','Gastón','Leandro','Ezequiel','Ignacio','Tomás','Agustín','Federico','Nicolás','Ramiro','Sebastián','Germán','Maximiliano'],
+    last:   ['González','Fernández','Rodríguez','López','Martínez','García','Pérez','Sánchez','Romero','Díaz','Torres','Álvarez','Ruiz','Ramírez','Flores']
+  }
+};
+LC_NAMES.Chile          = LC_NAMES.Argentina;
+LC_NAMES['República Dominicana'] = LC_NAMES.Venezuela;
+LC_NAMES.Cuba           = LC_NAMES.Venezuela;
+LC_NAMES.Perú           = LC_NAMES.Ecuador;
+LC_NAMES.España         = LC_NAMES.Argentina;
+LC_NAMES.Otro           = LC_NAMES.Colombia;
+
+// ── Ciudades por país ─────────────────────────────────────
+const LC_CITIES = {
+  Colombia:  ['Medellín','Bogotá','Cali','Barranquilla','Cartagena','Pereira','Manizales','Bucaramanga','Armenia','Ibagué'],
+  México:    ['Ciudad de México','Guadalajara','Monterrey','Puebla','Tijuana','Cancún','Mérida','León','Querétaro','Veracruz'],
+  Venezuela: ['Caracas','Maracaibo','Valencia','Barquisimeto','Maracay','Maturín'],
+  Ecuador:   ['Quito','Guayaquil','Cuenca','Machala','Ambato','Portoviejo'],
+  Argentina: ['Buenos Aires','Córdoba','Rosario','Mendoza','Tucumán','La Plata'],
+  Chile:     ['Santiago','Valparaíso','Concepción','La Serena','Antofagasta'],
+  Otro:      ['Bogotá','Medellín','Cali','CDMX','Lima']
+};
+['Perú','República Dominicana','Cuba','España'].forEach(c => LC_CITIES[c] = LC_CITIES.Otro);
+
+// ── Pools de comentarios ──────────────────────────────────
+const LC_FILLER = [
+  'Estoy desde [CITY]','Saludos!','Eres muy linda','Gracias por toda esta información de valor',
+  'Me encantan tus tips','No sabía que eso lo podía hacer','Wuao!','Hola!','Estoy en el live',
+  'Explicas muy bien','Soy seguidora tuya hace rato','Te sigo desde hace poco y me gusta tu contenido',
+  'Yo quiero aprender eso','Me encanta tu energía','¡Siempre aprendo algo contigo!',
+  'Qué claridad para explicar, gracias','Te admiro muchísimo','Estoy lista para tomar acción',
+  '¡Qué buena información!','Compartiendo con mis amigos'
+];
+const LC_TESTIMONIAL = [
+  'Ya compré, recomendado 100%','Sí funciona','Ya compré y estoy feliz con el resultado',
+  'Un servicio muy completo','Aprendí muchísimo','Nunca pensé que fuera tan fácil, gracias',
+  'Esto sí funciona, no es teoría, son pasos reales','Mi mentalidad cambió completamente',
+  'Literalmente me abriste los ojos','Lo mejor que he invertido este año',
+  'Entré sin saber nada y ahora ya estoy viendo resultados','Tu energía y claridad no tienen comparación',
+  'Pensé que esto era muy difícil, ahora sé que también es para mí',
+  'No es solo un producto, es un cambio de mentalidad','Salí motivada y con plan de acción claro'
+];
+const LC_FAQ = [
+  '¿Cuánto cuesta?','¿Tienen garantía?','¿Cómo hago para comprar?','¿Funciona para Colombia?',
+  '¿Tienen envíos a toda Colombia?','¿Cuánto tarda el envío?','¿Puedo pagar con Nequi?',
+  '¿Tienen página web?','¿Es seguro comprar aquí?','¿Qué métodos de pago aceptan?',
+  '¿Tienen descuentos?','¿Hay stock disponible?','¿Hacen devoluciones?',
+  '¿Puedo comprar por WhatsApp?','¿Cuándo es el próximo live?','¿Venden al por mayor?'
+];
+const LC_INTEREST = [
+  '¿Dónde puedo conseguir más información?','¿Cómo puedo empezar?',
+  '¿Esto aplica para alguien sin experiencia?','¿Con cuánto dinero puedo empezar?',
+  '¿Cuánto tiempo toma ver resultados?','¿Necesito conocimientos previos?',
+  '¿Tienen algún curso o capacitación?','¿Puedo hacer esto desde casa?',
+  '¿Funciona para cualquier persona?','¿Me pueden asesorar personalmente?'
+];
+
+// ── Estado del módulo ─────────────────────────────────────
+const LS_LC = 'fakelive_livecake';
+let _lcComments   = [];   // lista generada actual
+let _lcAvatarMap  = {};   // username → url
+let _lcNamesSeeds = {};   // username → assigned display name (para regenerar solo nombres)
+
+// ── Helpers ───────────────────────────────────────────────
+function lcRand(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+function lcPickName(country, gender, usedRecent) {
+  const db = LC_NAMES[country] || LC_NAMES.Colombia;
+  const pool = gender === 'female' ? db.female : db.male;
+  let first;
+  let tries = 0;
+  do { first = lcRand(pool); tries++; } while (usedRecent.includes(first) && tries < 20);
+  const last = lcRand(db.last);
+  return { display: `${first} ${last[0]}.`, gender };
+}
+
+function lcFormatTime(totalSec, format) {
+  if (format === 'mmss') {
+    const m = String(Math.floor(totalSec / 60)).padStart(2, '0');
+    const s = String(totalSec % 60).padStart(2, '0');
+    return `${m}:${s}`;
+  }
+  if (format === 'hace_min') {
+    const m = Math.max(1, Math.floor(totalSec / 60));
+    return `Hace ${m} minuto${m === 1 ? '' : 's'}`;
+  }
+  if (format === 'mixto') {
+    if (totalSec < 60) return `Hace ${Math.max(1, totalSec)} segundo${totalSec === 1 ? '' : 's'}`;
+    const m = Math.floor(totalSec / 60);
+    return `Hace ${m} minuto${m === 1 ? '' : 's'}`;
+  }
+  // hace_seg (default)
+  if (totalSec < 60) return `Hace ${Math.max(1, totalSec)} segundo${totalSec === 1 ? '' : 's'}`;
+  const m = Math.floor(totalSec / 60);
+  return `Hace ${m} minuto${m === 1 ? '' : 's'}`;
+}
+
+function lcGetConfig() {
+  return {
+    country:      document.getElementById('lc-country')?.value       || 'Colombia',
+    liveType:     document.getElementById('lc-live-type')?.value     || 'Dropshipping',
+    scripted:     document.getElementById('lc-chk-scripted')?.checked !== false,
+    filler:       document.getElementById('lc-chk-filler')?.checked  !== false,
+    testimonial:  document.getElementById('lc-chk-testimonial')?.checked !== false,
+    faq:          document.getElementById('lc-chk-faq')?.checked     !== false,
+    interest:     document.getElementById('lc-chk-interest')?.checked !== false,
+    fillerPerMin: parseInt(document.getElementById('lc-filler-per-min')?.value || '4', 10),
+    duration:     parseInt(document.getElementById('lc-duration')?.value        || '6', 10),
+    timeFormat:   document.getElementById('lc-time-format')?.value   || 'hace_seg'
+  };
+}
+
+function lcSaveConfig() {
+  const cfg = lcGetConfig();
+  try { localStorage.setItem(LS_LC, JSON.stringify(cfg)); } catch (_) {}
+}
+
+function lcLoadConfig() {
+  let cfg = {};
+  try { cfg = JSON.parse(localStorage.getItem(LS_LC) || '{}'); } catch (_) {}
+  if (cfg.country)     { const el = document.getElementById('lc-country');        if (el) el.value = cfg.country; }
+  if (cfg.liveType)    { const el = document.getElementById('lc-live-type');      if (el) el.value = cfg.liveType; }
+  if (cfg.timeFormat)  { const el = document.getElementById('lc-time-format');    if (el) el.value = cfg.timeFormat; }
+  if (cfg.fillerPerMin !== undefined) { const el = document.getElementById('lc-filler-per-min'); if (el) el.value = cfg.fillerPerMin; }
+  if (cfg.duration    !== undefined)  { const el = document.getElementById('lc-duration');        if (el) el.value = cfg.duration; }
+  ['scripted','filler','testimonial','faq','interest'].forEach(k => {
+    if (cfg[k] !== undefined) {
+      const el = document.getElementById('lc-chk-' + k);
+      if (el) el.checked = cfg[k];
+    }
+  });
+}
+
+// ── Auto-detectar duración desde el guion ────────────────
+function lcAutoDetectDuration() {
+  const ta = document.getElementById('script-textarea');
+  if (!ta || !ta.value.trim()) return;
+  const blocks = window.parseScript(ta.value);
+  if (!blocks.length) return;
+  const maxSec = Math.max(...blocks.map(b => b.time));
+  const dur    = Math.ceil(maxSec / 60) || 6;
+  const el     = document.getElementById('lc-duration');
+  if (el) el.value = dur;
+}
+
+// ── Generar lista de comentarios ─────────────────────────
+function lcGenerateComments(keepNames) {
+  const cfg      = lcGetConfig();
+  const country  = cfg.country;
+  const cities   = LC_CITIES[country] || LC_CITIES.Otro;
+  const totalSec = cfg.duration * 60;
+  const fmt      = cfg.timeFormat;
+  const comments = [];
+
+  // 1. Comentarios del guion
+  if (cfg.scripted) {
+    const ta     = document.getElementById('script-textarea');
+    const blocks = ta ? window.parseScript(ta.value) : [];
+    blocks.filter(b => b.type === 'COMENTARIO').forEach(b => {
+      comments.push({ sec: b.time, type: 'scripted', text: b.message || b.content, original: b.username });
+    });
+  }
+
+  // 2. Comentarios de relleno distribuidos uniformemente
+  const fillerTotal = Math.round(cfg.fillerPerMin * cfg.duration);
+  const pools = [];
+  if (cfg.filler)      pools.push({ pool: LC_FILLER,      type: 'filler'      });
+  if (cfg.testimonial) pools.push({ pool: LC_TESTIMONIAL, type: 'testimonial' });
+  if (cfg.faq)         pools.push({ pool: LC_FAQ,         type: 'faq'         });
+  if (cfg.interest)    pools.push({ pool: LC_INTEREST,    type: 'interest'    });
+
+  if (pools.length && fillerTotal > 0) {
+    const usedTexts = new Set(comments.map(c => c.text));
+    for (let i = 0; i < fillerTotal; i++) {
+      const sec   = Math.floor((totalSec / (fillerTotal + 1)) * (i + 1));
+      const src   = pools[i % pools.length];
+      let   text  = lcRand(src.pool);
+      // Reemplazar [CITY]
+      text = text.replace('[CITY]', lcRand(cities));
+      comments.push({ sec, type: src.type, text });
+      usedTexts.add(text);
+    }
+  }
+
+  // 3. Ordenar por tiempo
+  comments.sort((a, b) => a.sec - b.sec);
+
+  // 4. Asignar nombres
+  const recentNames = [];
+  const nameCounts  = {};
+  const newMap      = {};
+
+  comments.forEach((c, i) => {
+    const gender   = Math.random() < 0.6 ? 'female' : 'male';
+    const recentWin = recentNames.slice(-3).map(n => n.split(' ')[0]);
+    let name;
+
+    if (keepNames && _lcNamesSeeds[i]) {
+      name = _lcNamesSeeds[i];
+    } else {
+      const picked = lcPickName(country, gender, recentWin);
+      name = picked.display;
+      _lcNamesSeeds[i] = name;
+    }
+
+    // Limitar a máx 3 apariciones
+    if ((nameCounts[name] || 0) >= 3) {
+      const alt = lcPickName(country, gender, recentWin);
+      name = alt.display;
+      _lcNamesSeeds[i] = name;
+    }
+    nameCounts[name] = (nameCounts[name] || 0) + 1;
+    recentNames.push(name.split(' ')[0]);
+    newMap[name] = _lcAvatarMap[name] || null;
+
+    c.username = name;
+    c.gender   = gender;
+    c.timeStr  = lcFormatTime(c.sec, fmt);
+  });
+
+  return comments;
+}
+
+// ── Renderizar preview ───────────────────────────────────
+function lcRenderPreview() {
+  _lcComments = lcGenerateComments(false);
+
+  const container = document.getElementById('lc-preview-table');
+  const countEl   = document.getElementById('lc-preview-count');
+  const statsEl   = document.getElementById('lc-preview-stats');
+  const warnEl    = document.getElementById('lc-preview-warning');
+  const okEl      = document.getElementById('lc-preview-ok');
+  if (!container) return;
+
+  const total = _lcComments.length;
+  if (countEl) countEl.textContent = `${total} comentarios`;
+
+  // Tabla (máx 10 filas)
+  const preview = _lcComments.slice(0, 10);
+  let html = '<table><thead><tr><th>Avatar</th><th>Nombre</th><th>Comentario</th><th>Tiempo</th></tr></thead><tbody>';
+  preview.forEach(c => {
+    const text    = c.text.length > 55 ? c.text.slice(0, 54) + '…' : c.text;
+    const avatarUrl = _lcAvatarMap[c.username];
+    const imgHtml = avatarUrl
+      ? `<div class="lc-avatar-circle"><img src="${avatarUrl}" alt=""/></div>`
+      : `<div class="lc-avatar-circle"></div>`;
+    html += `<tr>
+      <td>${imgHtml}</td>
+      <td style="white-space:nowrap;">${escHtml(c.username)}</td>
+      <td style="color:rgba(228,225,240,0.6);">${escHtml(text)}</td>
+      <td style="white-space:nowrap;color:rgba(228,225,240,0.45);">${escHtml(c.timeStr)}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  if (total > 10) html += `<div class="lc-preview-more">... y ${total - 10} comentarios más</div>`;
+  container.innerHTML = html;
+
+  // Stats
+  const counts = { scripted:0, filler:0, testimonial:0, faq:0, interest:0 };
+  _lcComments.forEach(c => { counts[c.type] = (counts[c.type] || 0) + 1; });
+  if (statsEl) {
+    statsEl.textContent = [
+      counts.scripted    ? `📝 ${counts.scripted} del guion`    : '',
+      counts.filler      ? `💬 ${counts.filler} relleno`        : '',
+      counts.testimonial ? `⭐ ${counts.testimonial} testimonios`: '',
+      counts.faq         ? `❓ ${counts.faq} preguntas`          : '',
+      counts.interest    ? `🔍 ${counts.interest} interés`       : ''
+    ].filter(Boolean).join(' · ');
+  }
+
+  // Warnings / OK
+  const cfg = lcGetConfig();
+  if (warnEl) { warnEl.style.display = total < 20 ? '' : 'none'; warnEl.textContent = '⚠️ Recomendamos al menos 20 comentarios para un live convincente.'; }
+  if (okEl)   { okEl.style.display   = total > 50 ? '' : 'none'; okEl.textContent   = `✅ Cantidad óptima para un live de ${cfg.duration} minutos.`; }
+
+  lcSaveConfig();
+}
+
+// ── Actualizar status chips ───────────────────────────────
+async function lcUpdateStatus() {
+  const nanoEl = document.getElementById('lc-chip-nano');
+  const sbEl   = document.getElementById('lc-chip-sb');
+  try {
+    const r = await fetch('/api/avatar-status');
+    if (!r.ok) throw new Error('backend unavailable');
+    const s = await r.json();
+    if (nanoEl) {
+      nanoEl.className = 'lc-chip ' + (s.nanobanana ? 'lc-chip-ok' : 'lc-chip-off');
+      nanoEl.textContent = s.nanobanana ? '🟢 Nanobanana: conectado' : '🔴 Nanobanana: no configurado';
+    }
+    if (sbEl) {
+      sbEl.className = 'lc-chip ' + (s.supabase ? 'lc-chip-ok' : 'lc-chip-warn');
+      sbEl.textContent = s.supabase ? '🟢 Supabase: conectado' : '🟡 Sin Supabase: modo DiceBear';
+    }
+  } catch (_) {
+    if (nanoEl) { nanoEl.className = 'lc-chip lc-chip-warn'; nanoEl.textContent = '🟡 Modo local no activo'; }
+    if (sbEl)   { sbEl.className   = 'lc-chip lc-chip-warn'; sbEl.textContent   = '🟡 Avatares: DiceBear (gratis)'; }
+  }
+}
+
+// ── Enviar configuración al servidor ─────────────────────
+function lcSendConfigToServer() {
+  const nano   = localStorage.getItem('fakelive_nanobanana_key') || '';
+  const sbUrl  = localStorage.getItem('fakelive_supabase_url')   || '';
+  const sbAnon = localStorage.getItem('fakelive_supabase_anon')  || '';
+  const sbSvc  = localStorage.getItem('fakelive_supabase_service') || '';
+  if (!nano && !sbUrl) return;
+  fetch('/api/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nanobananaKey: nano, supabaseUrl: sbUrl, supabaseAnon: sbAnon, supabaseService: sbSvc })
+  }).catch(() => {}); // falla silenciosamente en Vercel
+}
+
+// ── Generar avatares ──────────────────────────────────────
+async function lcGenerateAvatars() {
+  const btn      = document.getElementById('btn-lc-avatars');
+  const progWrap = document.getElementById('lc-avatar-progress');
+  const progFill = document.getElementById('lc-progress-fill');
+  const progLbl  = document.getElementById('lc-progress-label');
+  const doneEl   = document.getElementById('lc-avatar-done');
+
+  if (!_lcComments.length) { showToast('Primero configura el export', 'error'); return; }
+
+  btn.disabled = true;
+  progWrap.style.display = '';
+  doneEl.style.display   = 'none';
+
+  const cfg     = lcGetConfig();
+  const unique  = [...new Set(_lcComments.map(c => c.username))];
+  const total   = unique.length;
+  let done      = 0;
+
+  const doOne = async (username) => {
+    // Si ya tiene avatar, saltar
+    if (_lcAvatarMap[username]) { done++; return; }
+
+    const c      = _lcComments.find(x => x.username === username);
+    const gender = c?.gender || 'female';
+
+    try {
+      const r = await fetch('/api/generate-avatar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, country: cfg.country, gender })
+      });
+      if (r.ok) {
+        const d = await r.json();
+        _lcAvatarMap[username] = d.url;
+      }
+    } catch (_) {
+      // Fallback directo a DiceBear (funciona sin backend)
+      _lcAvatarMap[username] = `https://api.dicebear.com/7.x/personas/svg?seed=${encodeURIComponent(username)}`;
+    }
+
+    done++;
+    const pct = Math.round((done / total) * 100);
+    if (progFill) progFill.style.width = pct + '%';
+    if (progLbl)  progLbl.textContent  = `Generando... ${done} de ${total}`;
+
+    // Actualizar preview en tiempo real
+    lcRenderPreviewAvatars();
+  };
+
+  // Máx 3 concurrentes
+  const chunks = [];
+  for (let i = 0; i < unique.length; i += 3) chunks.push(unique.slice(i, i + 3));
+  for (const chunk of chunks) await Promise.all(chunk.map(doOne));
+
+  progWrap.style.display = 'none';
+  doneEl.style.display   = '';
+  doneEl.textContent     = `✅ ${total} avatares listos`;
+  btn.disabled = false;
+
+  lcShowStep2();
+  showToast(`${total} avatares generados ✓`, 'success');
+}
+
+// Actualiza solo las imágenes del preview sin regenerar todo
+function lcRenderPreviewAvatars() {
+  document.querySelectorAll('.lc-avatar-circle').forEach((el, i) => {
+    const c = _lcComments[i];
+    if (!c) return;
+    const url = _lcAvatarMap[c.username];
+    if (url && !el.querySelector('img')) {
+      el.innerHTML = `<img src="${url}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;"/>`;
+    }
+  });
+}
+
+// ── Mostrar step 2 (CSV preview) ─────────────────────────
+function lcShowStep2() {
+  const step2 = document.getElementById('lc-step-2');
+  const step3 = document.getElementById('lc-step-3');
+  if (step2) step2.style.display = '';
+  if (step3) step3.style.display = '';
+
+  // Mostrar primeras 5 filas del CSV
+  const el = document.getElementById('lc-csv-preview');
+  if (!el || !_lcComments.length) return;
+  const rows = [['Title','Content','Time','Image']];
+  _lcComments.slice(0, 5).forEach(c => {
+    rows.push([c.username, c.text, c.timeStr, _lcAvatarMap[c.username] || '']);
+  });
+  el.textContent = rows.map(r => r.join('\t')).join('\n');
+}
+
+// ── Descargar CSV ─────────────────────────────────────────
+async function lcDownloadCSV() {
+  if (!_lcComments.length) { showToast('Genera los comentarios primero', 'error'); return; }
+  const cfg  = lcGetConfig();
+  const rows = _lcComments.map(c => ({
+    title:    c.username,
+    content:  c.text,
+    time:     c.timeStr,
+    imageUrl: _lcAvatarMap[c.username] || '',
+    country:  cfg.country
+  }));
+
+  const ts = new Date().toISOString().slice(0, 16).replace('T', '_').replace(/:/g, '-');
+  const filename = `livecake_${cfg.country.replace(/[^a-zA-Z]/g,'')}_${ts}.csv`;
+
+  try {
+    const r = await fetch('/api/export-csv', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rows })
+    });
+    if (r.ok) {
+      const blob = await r.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = Object.assign(document.createElement('a'), { href: url, download: filename });
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      showToast(`CSV descargado — ${rows.length} comentarios ✓`, 'success');
+      return;
+    }
+  } catch (_) { /* backend no disponible, generar client-side */ }
+
+  // Fallback: generar CSV en el navegador
+  const BOM    = '﻿';
+  const header = 'Title\tContent\tTime\tImage';
+  const lines  = rows.map(r =>
+    [r.title, r.content, r.time, r.imageUrl]
+      .map(v => String(v).replace(/\t|\n/g, ' '))
+      .join('\t')
+  );
+  const csv  = BOM + header + '\n' + lines.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement('a'), { href: url, download: filename });
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  showToast(`CSV descargado — ${rows.length} comentarios ✓`, 'success');
+}
+
+// ── Copiar como texto ─────────────────────────────────────
+function lcCopyTSV() {
+  if (!_lcComments.length) { showToast('Genera los comentarios primero', 'error'); return; }
+  const header = 'Title\tContent\tTime\tImage';
+  const lines  = _lcComments.map(c =>
+    [c.username, c.text, c.timeStr, _lcAvatarMap[c.username] || ''].join('\t')
+  );
+  navigator.clipboard.writeText(header + '\n' + lines.join('\n'))
+    .then(() => showToast('Copiado al portapapeles ✓'))
+    .catch(() => showToast('Error al copiar', 'error'));
+}
+
+// ── Probar Supabase ───────────────────────────────────────
+async function lcTestSupabase() {
+  const btn = document.getElementById('btn-test-supabase-lc');
+  const res = document.getElementById('supabase-lc-test-result');
+  btn.disabled = true;
+  btn.textContent = 'Probando...';
+  res.style.display = 'none';
+  // Enviar config primero
+  lcSendConfigToServer();
+  await new Promise(r => setTimeout(r, 800));
+  try {
+    const r = await fetch('/api/avatar-status');
+    const s = r.ok ? await r.json() : { supabase: false };
+    res.style.display = 'block';
+    if (s.supabase) {
+      res.style.background = 'rgba(0,200,83,0.12)'; res.style.color = '#00e475'; res.style.border = '1px solid rgba(0,200,83,0.3)';
+      res.textContent = '✅ Supabase conectado correctamente';
+    } else {
+      res.style.background = 'rgba(234,195,43,0.1)'; res.style.color = '#eac32b'; res.style.border = '1px solid rgba(234,195,43,0.2)';
+      res.textContent = '🟡 Supabase no configurado — modo DiceBear activo';
+    }
+  } catch (_) {
+    res.style.display = 'block';
+    res.style.background = 'rgba(255,23,68,0.1)'; res.style.color = '#ff5166'; res.style.border = '1px solid rgba(255,23,68,0.25)';
+    res.textContent = '🟡 Servidor local no activo — en Vercel se usa DiceBear automáticamente';
+  } finally {
+    btn.disabled = false; btn.textContent = '🧪 Probar Supabase';
+  }
+}
+
+// ── Cargar/guardar API keys de LiveCake ───────────────────
+function lcLoadApiKeys() {
+  const el1 = document.getElementById('nanobanana-key-input');
+  const el2 = document.getElementById('lc-supabase-url');
+  const el3 = document.getElementById('lc-supabase-anon');
+  const el4 = document.getElementById('lc-supabase-service');
+  if (el1) el1.value = localStorage.getItem('fakelive_nanobanana_key') || '';
+  if (el2) el2.value = localStorage.getItem('fakelive_supabase_url')   || '';
+  if (el3) el3.value = localStorage.getItem('fakelive_supabase_anon')  || '';
+  if (el4) el4.value = localStorage.getItem('fakelive_supabase_service') || '';
+}
+
+function lcSaveApiKeys() {
+  const nano = document.getElementById('nanobanana-key-input')?.value?.trim();
+  const url  = document.getElementById('lc-supabase-url')?.value?.trim();
+  const anon = document.getElementById('lc-supabase-anon')?.value?.trim();
+  const svc  = document.getElementById('lc-supabase-service')?.value?.trim();
+  if (nano !== undefined) localStorage.setItem('fakelive_nanobanana_key',   nano);
+  if (url  !== undefined) localStorage.setItem('fakelive_supabase_url',    url);
+  if (anon !== undefined) localStorage.setItem('fakelive_supabase_anon',   anon);
+  if (svc  !== undefined) localStorage.setItem('fakelive_supabase_service', svc);
+  lcSendConfigToServer();
+}
+
+// ── Entrada a la sección ──────────────────────────────────
+function lcOnEnter() {
+  lcLoadConfig();
+  lcAutoDetectDuration();
+  lcRenderPreview();
+  lcUpdateStatus();
+}
+
+// ── Parche sbNavTo para lazy-load ─────────────────────────
+const _lcOrigNavTo = sbNavTo;
+sbNavTo = function (section) {
+  _lcOrigNavTo.apply(this, [section]);
+  if (section === 'livecake') lcOnEnter();
+  if (section === 'settings') lcLoadApiKeys();
+};
+
+// ── Bindings ─────────────────────────────────────────────
+function lcBindAll() {
+  // Config changes → re-render preview
+  ['lc-country','lc-live-type','lc-filler-per-min','lc-duration','lc-time-format'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', lcRenderPreview);
+    document.getElementById(id)?.addEventListener('input',  lcRenderPreview);
+  });
+  ['lc-chk-scripted','lc-chk-filler','lc-chk-testimonial','lc-chk-faq','lc-chk-interest'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', lcRenderPreview);
+  });
+
+  document.getElementById('btn-lc-regenerate')?.addEventListener('click', () => {
+    _lcNamesSeeds = {};
+    lcRenderPreview();
+  });
+
+  document.getElementById('btn-lc-avatars')?.addEventListener('click',  lcGenerateAvatars);
+  document.getElementById('btn-lc-download')?.addEventListener('click', lcDownloadCSV);
+  document.getElementById('btn-lc-copy')?.addEventListener('click',     lcCopyTSV);
+  document.getElementById('btn-test-supabase-lc')?.addEventListener('click', lcTestSupabase);
+
+  // Nanobanana key show/hide
+  document.getElementById('btn-toggle-nanobanana-key')?.addEventListener('click', () => {
+    const inp = document.getElementById('nanobanana-key-input');
+    const eye = document.getElementById('nanobanana-key-eye');
+    if (!inp) return;
+    inp.type = inp.type === 'password' ? 'text' : 'password';
+    if (eye) eye.textContent = inp.type === 'password' ? 'visibility' : 'visibility_off';
+  });
+
+  // Guardar API keys al cambiar
+  ['nanobanana-key-input','lc-supabase-url','lc-supabase-anon','lc-supabase-service'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', lcSaveApiKeys);
+    document.getElementById(id)?.addEventListener('blur',   lcSaveApiKeys);
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  lcBindAll();
+  lcLoadApiKeys();
+  lcSendConfigToServer();
+});
