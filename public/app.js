@@ -2255,6 +2255,121 @@ function lcCopyCSV() {
     .catch(() => showToast('Error al copiar', 'error'));
 }
 
+// ── Upload Avatar ─────────────────────────────────────────
+const _lcUploadSel = { gender: '', age: '' };
+
+function lcToggleUploadCard() {
+  const body  = document.getElementById('lc-upload-body');
+  const arrow = document.getElementById('lc-upload-arrow');
+  if (!body) return;
+  const open = body.style.display !== 'none';
+  body.style.display  = open ? 'none' : 'block';
+  arrow.textContent   = open ? '▼' : '▲';
+}
+
+function lcSetUploadSeg(type, value) {
+  _lcUploadSel[type] = value;
+  const map = { gender: ['female','male'], age: ['young','adult','middle'] };
+  map[type].forEach(v => {
+    const id  = type === 'gender' ? `lc-seg-${v}` : `lc-seg-${v}`;
+    const btn = document.getElementById(id);
+    if (btn) btn.classList.toggle('lc-seg-active', v === value);
+  });
+}
+
+function lcPreviewAvatar(input) {
+  const file    = input.files?.[0];
+  const nameEl  = document.getElementById('lc-upload-filename');
+  const thumb   = document.getElementById('lc-upload-thumb');
+  if (!file) return;
+  if (nameEl) nameEl.textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = e => {
+    if (thumb) thumb.innerHTML = `<img src="${e.target.result}" style="width:100%;height:100%;object-fit:cover;">`;
+  };
+  reader.readAsDataURL(file);
+}
+
+async function lcUploadAvatar() {
+  const fileInput = document.getElementById('lc-upload-file');
+  const country   = document.getElementById('lc-upload-country')?.value || '';
+  const gender    = _lcUploadSel.gender;
+  const ageGroup  = _lcUploadSel.age;
+  const statusEl  = document.getElementById('lc-upload-status');
+  const btn       = document.getElementById('lc-upload-btn');
+
+  const setStatus = (msg, color = 'rgba(228,225,240,0.5)') => {
+    if (statusEl) { statusEl.textContent = msg; statusEl.style.color = color; }
+  };
+
+  // Validar
+  if (!fileInput?.files?.[0]) { setStatus('⚠️ Selecciona una imagen', '#eac32b'); return; }
+  if (!gender)                 { setStatus('⚠️ Elige el género', '#eac32b'); return; }
+  if (!ageGroup)               { setStatus('⚠️ Elige el rango de edad', '#eac32b'); return; }
+  if (!country)                { setStatus('⚠️ Elige el país', '#eac32b'); return; }
+
+  const sb = window.sbClient;
+  if (!sb) { setStatus('❌ Supabase no disponible — recarga la página', '#ff5166'); return; }
+
+  if (btn) btn.disabled = true;
+  setStatus('⏳ Subiendo imagen...');
+
+  const file = fileInput.files[0];
+  const ext  = (file.name.split('.').pop() || 'jpg').toLowerCase().replace('jpeg','jpg');
+  const safe = country.replace(/[^a-zA-Z]/g, '');
+  const filename = `avatars/${gender}_${ageGroup}_${safe}_${Date.now()}.${ext}`;
+  const BUCKET   = 'fakelive-avatars';
+
+  try {
+    // 1. Crear bucket si no existe (silencia error si ya existe)
+    await sb.storage.createBucket(BUCKET, { public: true }).catch(() => {});
+
+    // 2. Subir imagen
+    const { error: uploadErr } = await sb.storage
+      .from(BUCKET)
+      .upload(filename, file, { contentType: file.type, upsert: true });
+    if (uploadErr) throw new Error('Storage: ' + uploadErr.message);
+
+    // 3. URL pública
+    const { data: urlData } = sb.storage.from(BUCKET).getPublicUrl(filename);
+    const publicUrl = urlData?.publicUrl;
+    if (!publicUrl) throw new Error('No se pudo obtener la URL pública');
+
+    // 4. Insertar en lc_avatars
+    const { error: dbErr } = await sb.from('lc_avatars').insert({
+      url:       publicUrl,
+      gender,
+      age_group: ageGroup,
+      country,
+      style:     'photo'
+    });
+    if (dbErr) throw new Error('DB: ' + dbErr.message);
+
+    setStatus('✅ Avatar subido y guardado correctamente', '#00e475');
+
+    // Reset form
+    fileInput.value = '';
+    document.getElementById('lc-upload-filename').textContent = 'Ningún archivo seleccionado';
+    document.getElementById('lc-upload-thumb').innerHTML =
+      '<span class="material-symbols-outlined" style="font-size:24px;color:rgba(255,255,255,0.2);">person</span>';
+    document.getElementById('lc-upload-country').value = '';
+    lcSetUploadSeg('gender', '');
+    lcSetUploadSeg('age', '');
+    _lcUploadSel.gender = '';
+    _lcUploadSel.age    = '';
+
+    // Refrescar pool de avatares en sesión
+    _lcDbAvatars = null;
+    lcFetchDbAvatars();
+
+  } catch (e) {
+    setStatus('❌ ' + e.message, '#ff5166');
+    console.error('[Upload Avatar]', e);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 // ── Entrada a la sección ──────────────────────────────────
 function lcOnEnter() {
   lcLoadConfig();

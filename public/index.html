@@ -884,6 +884,84 @@ EJEMPLO:
 
         </div>
 
+        <!-- ── Card 4: Subir Avatar ── -->
+        <div class="sb-card">
+          <div class="sb-card-title" id="lc-upload-hdr" style="cursor:pointer;user-select:none;" onclick="lcToggleUploadCard()">
+            <span class="material-symbols-outlined" style="font-size:16px;color:#eac32b;">add_photo_alternate</span>
+            Subir Avatar a la Base de Datos
+            <span id="lc-upload-arrow" style="margin-left:auto;font-size:11px;color:rgba(228,225,240,0.35);">▼</span>
+          </div>
+          <div id="lc-upload-body" style="display:none;">
+            <p style="font-size:11px;color:rgba(228,225,240,0.4);margin-bottom:14px;line-height:1.5;">
+              Agrega fotos reales a la base de avatares de la plataforma. Cualquier usuario puede colaborar.
+            </p>
+
+            <!-- Preview imagen -->
+            <div style="display:flex;gap:14px;align-items:flex-start;margin-bottom:14px;">
+              <div id="lc-upload-thumb" style="width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,0.07);border:2px dashed rgba(255,255,255,0.15);flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+                <span class="material-symbols-outlined" style="font-size:24px;color:rgba(255,255,255,0.2);">person</span>
+              </div>
+              <div style="flex:1;">
+                <label style="font-size:11px;color:rgba(228,225,240,0.5);display:block;margin-bottom:5px;">Imagen de perfil</label>
+                <label style="display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);padding:7px 12px;border-radius:6px;cursor:pointer;font-size:12px;color:rgba(228,225,240,0.7);">
+                  <span class="material-symbols-outlined" style="font-size:15px;">upload</span>
+                  Elegir foto
+                  <input type="file" id="lc-upload-file" accept="image/jpeg,image/png,image/webp" style="display:none;" onchange="lcPreviewAvatar(this)">
+                </label>
+                <div id="lc-upload-filename" style="font-size:10px;color:rgba(228,225,240,0.3);margin-top:5px;">Ningún archivo seleccionado</div>
+              </div>
+            </div>
+
+            <!-- Género -->
+            <div style="margin-bottom:10px;">
+              <label style="font-size:11px;color:rgba(228,225,240,0.5);display:block;margin-bottom:5px;">Género</label>
+              <div style="display:flex;gap:8px;">
+                <button class="lc-seg-btn" id="lc-seg-female" onclick="lcSetUploadSeg('gender','female')">👩 Mujer</button>
+                <button class="lc-seg-btn" id="lc-seg-male"   onclick="lcSetUploadSeg('gender','male')">👨 Hombre</button>
+              </div>
+            </div>
+
+            <!-- Edad -->
+            <div style="margin-bottom:10px;">
+              <label style="font-size:11px;color:rgba(228,225,240,0.5);display:block;margin-bottom:5px;">Rango de edad</label>
+              <div style="display:flex;gap:8px;">
+                <button class="lc-seg-btn" id="lc-seg-young"  onclick="lcSetUploadSeg('age','young')">18–28</button>
+                <button class="lc-seg-btn" id="lc-seg-adult"  onclick="lcSetUploadSeg('age','adult')">29–38</button>
+                <button class="lc-seg-btn" id="lc-seg-middle" onclick="lcSetUploadSeg('age','middle')">39–50</button>
+              </div>
+            </div>
+
+            <!-- País -->
+            <div style="margin-bottom:14px;">
+              <label style="font-size:11px;color:rgba(228,225,240,0.5);display:block;margin-bottom:5px;">País / Nacionalidad</label>
+              <div style="position:relative;">
+                <select id="lc-upload-country" class="sb-select">
+                  <option value="">-- selecciona --</option>
+                  <option value="Colombia">🇨🇴 Colombia</option>
+                  <option value="México">🇲🇽 México</option>
+                  <option value="Venezuela">🇻🇪 Venezuela</option>
+                  <option value="Ecuador">🇪🇨 Ecuador</option>
+                  <option value="Argentina">🇦🇷 Argentina</option>
+                  <option value="Perú">🇵🇪 Perú</option>
+                  <option value="Chile">🇨🇱 Chile</option>
+                  <option value="Bolivia">🇧🇴 Bolivia</option>
+                  <option value="Uruguay">🇺🇾 Uruguay</option>
+                  <option value="República Dominicana">🇩🇴 República Dominicana</option>
+                  <option value="España">🇪🇸 España</option>
+                  <option value="Otro">🌎 Otro</option>
+                </select>
+                <span class="material-symbols-outlined sb-select-icon">expand_more</span>
+              </div>
+            </div>
+
+            <button id="lc-upload-btn" class="sb-btn-teal" style="width:100%;" onclick="lcUploadAvatar()">
+              <span class="material-symbols-outlined" style="font-size:16px;">cloud_upload</span>
+              Subir Avatar
+            </button>
+            <div id="lc-upload-status" style="font-size:11px;text-align:center;margin-top:8px;min-height:16px;color:rgba(228,225,240,0.5);"></div>
+          </div>
+        </div>
+
       </div>
     </div>
     <!-- /section-livecake -->
