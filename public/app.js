@@ -1880,7 +1880,8 @@ REGLAS ESTRICTAS:
 Responde SOLO con el JSON array, sin texto adicional ni bloques de código markdown:
 [{"text":"comentario aquí","type":"interest"},{"text":"otro comentario","type":"faq"},{"text":"testimonio","type":"testimonial"},{"text":"relleno casual","type":"filler"}]`;
 
-  try {
+  // Helper: llamar Gemini con retry en 429 (rate limit)
+  const callGemini = async (attempt = 1) => {
     const r = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
       {
@@ -1890,12 +1891,23 @@ Responde SOLO con el JSON array, sin texto adicional ni bloques de código markd
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: { temperature: 0.9, maxOutputTokens: 3500 }
         }),
-        signal: AbortSignal.timeout(25000)
+        signal: AbortSignal.timeout(30000)
       }
     );
+    if (r.status === 429 && attempt < 3) {
+      // Rate limit → esperar y reintentar (2s, 5s)
+      const wait = attempt === 1 ? 2000 : 5000;
+      if (chipEl) chipEl.textContent = `🤖 IA: límite alcanzado, reintentando en ${wait/1000}s...`;
+      await new Promise(res => setTimeout(res, wait));
+      return callGemini(attempt + 1);
+    }
     if (!r.ok) throw new Error(`Gemini HTTP ${r.status}`);
-    const data = await r.json();
-    const raw  = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    return r.json();
+  };
+
+  try {
+    const data      = await callGemini();
+    const raw       = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
     const jsonMatch = raw.match(/\[[\s\S]*\]/);
     if (!jsonMatch) throw new Error('JSON no encontrado en respuesta');
     const parsed = JSON.parse(jsonMatch[0]);
@@ -2160,11 +2172,12 @@ async function lcUpdateStatus() {
 function lcSendConfigToServer() {
   const nano = localStorage.getItem('fakelive_gemini_key') || '';
   if (!nano) return;
+  // Falla silenciosamente — el endpoint solo existe en modo servidor local
   fetch('/api/config', {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
     body:    JSON.stringify({ nanobananaKey: nano })
-  }).catch(() => {}); // falla silenciosamente en Vercel
+  }).then(r => { if (!r.ok) {} }).catch(() => {});
 }
 
 // ── Auto-asignar avatares desde lc_avatars DB ────────────
@@ -2428,7 +2441,6 @@ async function lcUploadAvatar() {
 // ── Entrada a la sección ──────────────────────────────────
 function lcOnEnter() {
   lcLoadConfig();
-  lcAutoDetectDuration();
   lcSendConfigToServer();
   lcRenderChecklist();
   lcRenderPreview();   // render inmediato con pool estático
