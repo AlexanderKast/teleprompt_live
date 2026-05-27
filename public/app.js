@@ -1809,126 +1809,59 @@ function lcFormatTime(totalSec, format) {
 
 function lcGetConfig() {
   return {
-    country:      document.getElementById('lc-country')?.value       || 'Colombia',
-    liveType:     document.getElementById('lc-live-type')?.value     || 'Dropshipping',
-    scripted:     document.getElementById('lc-chk-scripted')?.checked !== false,
-    filler:       document.getElementById('lc-chk-filler')?.checked  !== false,
-    testimonial:  document.getElementById('lc-chk-testimonial')?.checked !== false,
-    faq:          document.getElementById('lc-chk-faq')?.checked     !== false,
-    interest:     document.getElementById('lc-chk-interest')?.checked !== false,
-    fillerPerMin: parseInt(document.getElementById('lc-filler-per-min')?.value || '4', 10),
-    duration:     parseInt(document.getElementById('lc-duration')?.value        || '6', 10),
-    timeFormat:   document.getElementById('lc-time-format')?.value   || 'hace_seg'
+    country:    document.getElementById('lc-country')?.value     || 'Colombia',
+    timeFormat: document.getElementById('lc-time-format')?.value || 'hace_seg'
   };
 }
 
 function lcSaveConfig() {
-  const cfg = lcGetConfig();
-  try { localStorage.setItem(LS_LC, JSON.stringify(cfg)); } catch (_) {}
+  try { localStorage.setItem(LS_LC, JSON.stringify(lcGetConfig())); } catch (_) {}
 }
 
 function lcLoadConfig() {
   let cfg = {};
   try { cfg = JSON.parse(localStorage.getItem(LS_LC) || '{}'); } catch (_) {}
-  if (cfg.country)     { const el = document.getElementById('lc-country');        if (el) el.value = cfg.country; }
-  if (cfg.liveType)    { const el = document.getElementById('lc-live-type');      if (el) el.value = cfg.liveType; }
-  if (cfg.timeFormat)  { const el = document.getElementById('lc-time-format');    if (el) el.value = cfg.timeFormat; }
-  if (cfg.fillerPerMin !== undefined) { const el = document.getElementById('lc-filler-per-min'); if (el) el.value = cfg.fillerPerMin; }
-  if (cfg.duration    !== undefined)  { const el = document.getElementById('lc-duration');        if (el) el.value = cfg.duration; }
-  ['scripted','filler','testimonial','faq','interest'].forEach(k => {
-    if (cfg[k] !== undefined) {
-      const el = document.getElementById('lc-chk-' + k);
-      if (el) el.checked = cfg[k];
-    }
-  });
+  if (cfg.country)    { const el = document.getElementById('lc-country');     if (el) el.value = cfg.country; }
+  if (cfg.timeFormat) { const el = document.getElementById('lc-time-format'); if (el) el.value = cfg.timeFormat; }
 }
 
-// ── Auto-detectar duración desde el guion ────────────────
-function lcAutoDetectDuration() {
-  const ta = document.getElementById('script-textarea');
-  if (!ta || !ta.value.trim()) return;
-  const blocks = window.parseScript(ta.value);
-  if (!blocks.length) return;
-  const maxSec = Math.max(...blocks.map(b => b.time));
-  const dur    = Math.ceil(maxSec / 60) || 6;
-  const el     = document.getElementById('lc-duration');
-  if (el) el.value = dur;
-}
+// ── Leer comentarios SOLO del guion (fuente única) ────────
+// Lee todos los bloques [COMENTARIO] del textarea y los devuelve
+// con su username y mensaje originales, sin generación aleatoria.
+function lcReadScriptComments() {
+  const cfg = lcGetConfig();
+  const fmt = cfg.timeFormat;
+  const ta  = document.getElementById('script-textarea');
+  if (!ta || !ta.value.trim()) return [];
 
-// ── Generar lista de comentarios ─────────────────────────
-// Los [COMENTARIO] del guion mantienen su username original.
-// Los de relleno (opcionales) reciben nombres aleatorios.
-function lcGenerateComments(keepNames) {
-  const cfg      = lcGetConfig();
-  const country  = cfg.country;
-  const cities   = LC_CITIES[country] || LC_CITIES.Otro;
-  const totalSec = cfg.duration * 60;
-  const fmt      = cfg.timeFormat;
-  const comments = [];
+  // Usa window.parseScript (override en SUPERPOWERS que soporta todos los tipos)
+  const allBlocks = window.parseScript(ta.value);
+  const result    = [];
 
-  // 1. Comentarios del guion — username original del script, SIN reemplazar
-  const ta     = document.getElementById('script-textarea');
-  const blocks = ta ? window.parseScript(ta.value) : [];
-  blocks.filter(b => b.type === 'COMENTARIO').forEach(b => {
-    const username = b.username || (b.content.includes(':') ? b.content.split(':')[0].trim() : 'Usuario');
-    comments.push({
+  allBlocks.forEach(b => {
+    if (b.type !== 'COMENTARIO') return;
+    // username = lo que está antes del primer ':'
+    const username = (b.username || '').trim() || 'Usuario';
+    // message = lo que está después del ':'
+    const text     = (b.message  || b.content || '').trim();
+    // Heurística de género por terminación del nombre
+    const gender   = /[aeiouáéíóúü]$/i.test(username) ? 'female' : 'male';
+    result.push({
       sec:      b.time,
+      timeStr:  lcFormatTime(b.time, fmt),
       type:     'scripted',
-      text:     b.message || b.content,
       username,
-      gender:   username.toLowerCase().match(/[aeiou]$/) ? 'female' : 'male', // heurística simple
-      timeStr:  lcFormatTime(b.time, fmt)
+      text,
+      gender
     });
   });
 
-  // 2. Comentarios de relleno (solo si algún checkbox de relleno está activo)
-  const pools = [];
-  if (cfg.filler)      pools.push({ pool: LC_FILLER,      type: 'filler'      });
-  if (cfg.testimonial) pools.push({ pool: LC_TESTIMONIAL, type: 'testimonial' });
-  if (cfg.faq)         pools.push({ pool: LC_FAQ,         type: 'faq'         });
-  if (cfg.interest)    pools.push({ pool: LC_INTEREST,    type: 'interest'    });
-
-  if (pools.length > 0) {
-    const fillerTotal = Math.round(cfg.fillerPerMin * cfg.duration);
-    const recentNames = comments.map(c => c.username.split(' ')[0]);
-    const nameCounts  = {};
-    comments.forEach(c => { nameCounts[c.username] = (nameCounts[c.username] || 0) + 1; });
-
-    for (let i = 0; i < fillerTotal; i++) {
-      const sec    = Math.floor((totalSec / (fillerTotal + 1)) * (i + 1));
-      const src    = pools[i % pools.length];
-      let   text   = lcRand(src.pool).replace('[CITY]', lcRand(cities));
-      const gender = Math.random() < 0.6 ? 'female' : 'male';
-      const recentWin = recentNames.slice(-3);
-      let   name;
-
-      if (keepNames && _lcNamesSeeds['f_' + i]) {
-        name = _lcNamesSeeds['f_' + i];
-      } else {
-        const picked = lcPickName(country, gender, recentWin);
-        name = picked.display;
-        _lcNamesSeeds['f_' + i] = name;
-      }
-      if ((nameCounts[name] || 0) >= 3) {
-        const alt = lcPickName(country, gender, recentWin);
-        name = alt.display;
-        _lcNamesSeeds['f_' + i] = name;
-      }
-      nameCounts[name] = (nameCounts[name] || 0) + 1;
-      recentNames.push(name.split(' ')[0]);
-
-      comments.push({ sec, type: src.type, text, username: name, gender, timeStr: lcFormatTime(sec, fmt) });
-    }
-  }
-
-  // 3. Ordenar por tiempo
-  comments.sort((a, b) => a.sec - b.sec);
-  return comments;
+  return result; // ya ordenados por tiempo (el guion está cronológico)
 }
 
 // ── Renderizar preview ───────────────────────────────────
 function lcRenderPreview() {
-  _lcComments = lcGenerateComments(false);
+  _lcComments = lcReadScriptComments();
 
   const container = document.getElementById('lc-preview-table');
   const countEl   = document.getElementById('lc-preview-count');
@@ -1938,45 +1871,39 @@ function lcRenderPreview() {
   if (!container) return;
 
   const total = _lcComments.length;
-  if (countEl) countEl.textContent = `${total} comentarios`;
+  if (countEl) countEl.textContent = `${total} comentario${total !== 1 ? 's' : ''}`;
 
-  // Tabla (máx 10 filas)
-  const preview = _lcComments.slice(0, 10);
-  let html = '<table><thead><tr><th>Avatar</th><th>Nombre</th><th>Comentario</th><th>Tiempo</th></tr></thead><tbody>';
+  if (total === 0) {
+    container.innerHTML = '<p style="color:rgba(228,225,240,0.35);font-size:12px;text-align:center;padding:16px 0;">No se encontraron bloques [COMENTARIO] en el guion.<br>Escribe tu guion en la pestaña <strong>Prompter</strong> primero.</p>';
+    if (statsEl) statsEl.textContent = '';
+    if (warnEl)  warnEl.style.display = 'none';
+    if (okEl)    okEl.style.display   = 'none';
+    return;
+  }
+
+  // Tabla (máx 15 filas)
+  const preview = _lcComments.slice(0, 15);
+  let html = '<table><thead><tr><th>Avatar</th><th>Usuario</th><th>Comentario</th><th>Tiempo</th></tr></thead><tbody>';
   preview.forEach(c => {
-    const text    = c.text.length > 55 ? c.text.slice(0, 54) + '…' : c.text;
+    const text      = c.text.length > 55 ? c.text.slice(0, 54) + '…' : c.text;
     const avatarUrl = _lcAvatarMap[c.username];
-    const imgHtml = avatarUrl
-      ? `<div class="lc-avatar-circle"><img src="${avatarUrl}" alt=""/></div>`
-      : `<div class="lc-avatar-circle"></div>`;
+    const imgHtml   = avatarUrl
+      ? `<div class="lc-avatar-circle"><img src="${avatarUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;"/></div>`
+      : `<div class="lc-avatar-circle" style="background:rgba(255,179,181,0.15);display:flex;align-items:center;justify-content:center;font-size:11px;color:rgba(228,225,240,0.3);">?</div>`;
     html += `<tr>
       <td>${imgHtml}</td>
-      <td style="white-space:nowrap;">${escHtml(c.username)}</td>
-      <td style="color:rgba(228,225,240,0.6);">${escHtml(text)}</td>
-      <td style="white-space:nowrap;color:rgba(228,225,240,0.45);">${escHtml(c.timeStr)}</td>
+      <td style="white-space:nowrap;font-weight:600;color:#ffb3b5;">${escHtml(c.username)}</td>
+      <td style="color:rgba(228,225,240,0.65);">${escHtml(text)}</td>
+      <td style="white-space:nowrap;color:rgba(228,225,240,0.4);font-family:'JetBrains Mono',monospace;font-size:11px;">${escHtml(c.timeStr)}</td>
     </tr>`;
   });
   html += '</tbody></table>';
-  if (total > 10) html += `<div class="lc-preview-more">... y ${total - 10} comentarios más</div>`;
+  if (total > 15) html += `<div class="lc-preview-more">... y ${total - 15} comentarios más</div>`;
   container.innerHTML = html;
 
-  // Stats
-  const counts = { scripted:0, filler:0, testimonial:0, faq:0, interest:0 };
-  _lcComments.forEach(c => { counts[c.type] = (counts[c.type] || 0) + 1; });
-  if (statsEl) {
-    statsEl.textContent = [
-      counts.scripted    ? `📝 ${counts.scripted} del guion`    : '',
-      counts.filler      ? `💬 ${counts.filler} relleno`        : '',
-      counts.testimonial ? `⭐ ${counts.testimonial} testimonios`: '',
-      counts.faq         ? `❓ ${counts.faq} preguntas`          : '',
-      counts.interest    ? `🔍 ${counts.interest} interés`       : ''
-    ].filter(Boolean).join(' · ');
-  }
-
-  // Warnings / OK
-  const cfg = lcGetConfig();
-  if (warnEl) { warnEl.style.display = total < 20 ? '' : 'none'; warnEl.textContent = '⚠️ Recomendamos al menos 20 comentarios para un live convincente.'; }
-  if (okEl)   { okEl.style.display   = total > 50 ? '' : 'none'; okEl.textContent   = `✅ Cantidad óptima para un live de ${cfg.duration} minutos.`; }
+  if (statsEl) statsEl.textContent = `📝 ${total} comentario${total !== 1 ? 's' : ''} del guion`;
+  if (warnEl) { warnEl.style.display = total < 5  ? '' : 'none'; warnEl.textContent  = '⚠️ Pocos comentarios. Agrega más bloques [COMENTARIO] a tu guion.'; }
+  if (okEl)   { okEl.style.display   = total >= 5 ? '' : 'none'; okEl.textContent    = `✅ ${total} comentarios listos para exportar.`; }
 
   lcSaveConfig();
 }
@@ -2243,18 +2170,12 @@ sbNavTo = function (section) {
 // ── Bindings ─────────────────────────────────────────────
 function lcBindAll() {
   // Config changes → re-render preview
-  ['lc-country','lc-live-type','lc-filler-per-min','lc-duration','lc-time-format'].forEach(id => {
-    document.getElementById(id)?.addEventListener('change', lcRenderPreview);
-    document.getElementById(id)?.addEventListener('input',  lcRenderPreview);
-  });
-  ['lc-chk-scripted','lc-chk-filler','lc-chk-testimonial','lc-chk-faq','lc-chk-interest'].forEach(id => {
+  ['lc-country','lc-time-format'].forEach(id => {
     document.getElementById(id)?.addEventListener('change', lcRenderPreview);
   });
 
-  document.getElementById('btn-lc-regenerate')?.addEventListener('click', () => {
-    _lcNamesSeeds = {};
-    lcRenderPreview();
-  });
+  // Botón refrescar (re-lee el guion)
+  document.getElementById('btn-lc-regenerate')?.addEventListener('click', lcRenderPreview);
 
   document.getElementById('btn-lc-avatars')?.addEventListener('click',  lcGenerateAvatars);
   document.getElementById('btn-lc-download')?.addEventListener('click', lcDownloadCSV);

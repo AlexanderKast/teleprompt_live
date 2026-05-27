@@ -848,6 +848,10 @@ EJEMPLO:
             Configuración del Export
           </div>
 
+          <p style="font-size:12px;color:rgba(228,225,240,0.5);margin-bottom:14px;line-height:1.6;">
+            Lee automáticamente todos los bloques <code style="background:rgba(255,179,181,0.1);padding:1px 5px;border-radius:4px;color:#ffb3b5;">[COMENTARIO]</code> de tu guion en el Prompter y los exporta con sus usuarios y mensajes originales.
+          </p>
+
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
             <div class="sb-field-group" style="margin:0;">
               <label class="sb-label">País del live</label>
@@ -869,59 +873,21 @@ EJEMPLO:
               </div>
             </div>
             <div class="sb-field-group" style="margin:0;">
-              <label class="sb-label">Tipo de live</label>
+              <label class="sb-label">Formato de tiempo</label>
               <div style="position:relative;">
-                <select id="lc-live-type" class="sb-select">
-                  <option>Dropshipping</option>
-                  <option>Ecommerce</option>
-                  <option>Bienes raíces</option>
-                  <option>Masterclass</option>
-                  <option>Producto físico</option>
-                  <option>Servicio</option>
-                  <option>Otro</option>
+                <select id="lc-time-format" class="sb-select">
+                  <option value="hace_seg">Hace X seg (estándar)</option>
+                  <option value="hace_min">Hace X min</option>
+                  <option value="mmss">MM:SS</option>
+                  <option value="mixto">Mixto (auto)</option>
                 </select>
                 <span class="material-symbols-outlined sb-select-icon">expand_more</span>
               </div>
             </div>
           </div>
 
-          <div class="sb-field-group">
-            <label class="sb-label">Tipo de comentarios a incluir</label>
-            <div class="lc-checks-grid">
-              <label class="sb-check-label"><input type="checkbox" class="sb-check" id="lc-chk-scripted" checked/> Del guion</label>
-              <label class="sb-check-label"><input type="checkbox" class="sb-check" id="lc-chk-filler" checked/> Relleno</label>
-              <label class="sb-check-label"><input type="checkbox" class="sb-check" id="lc-chk-testimonial" checked/> Testimoniales</label>
-              <label class="sb-check-label"><input type="checkbox" class="sb-check" id="lc-chk-faq" checked/> Preguntas</label>
-              <label class="sb-check-label"><input type="checkbox" class="sb-check" id="lc-chk-interest" checked/> Interés</label>
-            </div>
-          </div>
-
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-            <div class="sb-field-group" style="margin:0;">
-              <label class="sb-label">Relleno / minuto</label>
-              <input id="lc-filler-per-min" type="number" min="1" max="10" value="4" class="sb-input"/>
-            </div>
-            <div class="sb-field-group" style="margin:0;">
-              <label class="sb-label">Duración (min)</label>
-              <input id="lc-duration" type="number" min="1" max="180" value="6" class="sb-input"/>
-            </div>
-          </div>
-
-          <div class="sb-field-group">
-            <label class="sb-label">Formato de tiempo</label>
-            <div style="position:relative;">
-              <select id="lc-time-format" class="sb-select">
-                <option value="hace_seg">Hace X segundos (LiveCake estándar)</option>
-                <option value="hace_min">Hace X minutos</option>
-                <option value="mmss">MM:SS</option>
-                <option value="mixto">Mixto (auto)</option>
-              </select>
-              <span class="material-symbols-outlined sb-select-icon">expand_more</span>
-            </div>
-          </div>
-
-          <button id="btn-lc-regenerate" class="sb-btn-secondary" style="width:100%;">
-            🔄 Regenerar nombres
+          <button id="btn-lc-regenerate" class="sb-btn-secondary" style="width:100%;margin-top:14px;">
+            🔄 Leer guion
           </button>
         </div>
 
