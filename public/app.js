@@ -1751,6 +1751,7 @@ let _lcAiFillerPool    = null;  // [] cuando la IA generó comentarios; null = n
 let _lcAiScriptKey     = '';    // hash del script para invalidar caché de IA
 let _lcAiFillerLoading = false; // lock: evita llamadas concurrentes a Gemini (filler)
 let _lcGenderCache     = {};    // username → 'female'|'male' (detectado por IA)
+let _lcGeminiCooldown  = 0;     // timestamp (ms) hasta cuando NO intentar Gemini (post-429)
 
 // ── Hash determinístico (mismo input → mismo número siempre) ──────
 function lcHashInt(str) {
@@ -1969,10 +1970,23 @@ async function lcGenerateAiFiller(scriptText, country, productoCtx = {}) {
   const cacheKey = (scriptText || '').slice(0, 200) + country + tipo + nombreProducto + descProducto.slice(0, 100);
   if (_lcAiFillerPool !== null && _lcAiScriptKey === cacheKey) return; // ya cacheado
   if (_lcAiFillerLoading) return; // ya hay una llamada en progreso — ignorar duplicados
+
+  const chipEl = document.getElementById('lc-chip-ai');
+
+  // Cooldown post-429: no reintentar hasta que expire el período de espera
+  if (_lcGeminiCooldown > Date.now()) {
+    const secsLeft = Math.ceil((_lcGeminiCooldown - Date.now()) / 1000);
+    const label    = secsLeft > 60
+      ? `${Math.ceil(secsLeft / 60)}min`
+      : `${secsLeft}s`;
+    if (chipEl) { chipEl.className = 'lc-chip lc-chip-warn'; chipEl.textContent = `🟡 IA: quota agotada, espera ${label}`; }
+    _lcAiFillerPool = _lcAiFillerPool ?? []; // asegurar fallback a pool estático
+    return;
+  }
+
   _lcAiFillerLoading = true;
 
   const geminiKey = localStorage.getItem('fakelive_gemini_key') || '';
-  const chipEl    = document.getElementById('lc-chip-ai');
 
   if (!geminiKey) {
     _lcAiFillerPool    = [];
@@ -2046,12 +2060,17 @@ Responde SOLO con el JSON array, sin texto adicional ni bloques de código markd
         signal: AbortSignal.timeout(30000)
       }
     );
-    if (r.status === 429 && attempt < 3) {
-      // Rate limit → esperar y reintentar con backoff (15s, 30s)
-      const wait = attempt === 1 ? 15000 : 30000;
-      if (chipEl) chipEl.textContent = `🤖 IA: límite de cuota, reintentando en ${wait/1000}s...`;
-      await new Promise(res => setTimeout(res, wait));
-      return callGemini(attempt + 1);
+    if (r.status === 429) {
+      if (attempt < 3) {
+        // Primer o segundo intento → backoff corto y reintentar
+        const wait = attempt === 1 ? 15000 : 30000;
+        if (chipEl) chipEl.textContent = `🤖 IA: cuota, reintentando en ${wait/1000}s... (${attempt}/3)`;
+        await new Promise(res => setTimeout(res, wait));
+        return callGemini(attempt + 1);
+      }
+      // Tercer 429 consecutivo → cooldown de 5 minutos y abandonar
+      _lcGeminiCooldown = Date.now() + 5 * 60 * 1000;
+      throw new Error('Gemini HTTP 429 — cooldown 5min activado');
     }
     if (!r.ok) throw new Error(`Gemini HTTP ${r.status}`);
     return r.json();
@@ -2071,7 +2090,10 @@ Responde SOLO con el JSON array, sin texto adicional ni bloques de código markd
   } catch (e) {
     console.warn('[LC] AI filler falló:', e.message, '→ usando pools estáticos');
     _lcAiFillerPool = [];
-    if (chipEl) { chipEl.className = 'lc-chip lc-chip-warn'; chipEl.textContent = '🟡 IA: error — usando pool estático'; }
+    const cooldownMsg = _lcGeminiCooldown > Date.now()
+      ? ` (cooldown ${Math.ceil((_lcGeminiCooldown - Date.now()) / 60000)}min)`
+      : '';
+    if (chipEl) { chipEl.className = 'lc-chip lc-chip-warn'; chipEl.textContent = `🟡 IA: quota agotada${cooldownMsg} — usando pool estático`; }
   } finally {
     _lcAiFillerLoading = false; // siempre liberar el lock
   }
