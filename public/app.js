@@ -2047,7 +2047,7 @@ Responde SOLO con el JSON array, sin texto adicional ni bloques de código markd
 [{"text":"comentario aquí","type":"interest"},{"text":"otro comentario","type":"faq"},{"text":"testimonio","type":"testimonial"},{"text":"relleno casual","type":"filler"}]`;
 
   // Helper: llamar Gemini con retry en 429 (rate limit)
-  const callGemini = async (attempt = 1) => {
+  const callGemini = async () => {
     const r = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
       {
@@ -2061,14 +2061,8 @@ Responde SOLO con el JSON array, sin texto adicional ni bloques de código markd
       }
     );
     if (r.status === 429) {
-      if (attempt < 3) {
-        // Primer o segundo intento → backoff corto y reintentar
-        const wait = attempt === 1 ? 15000 : 30000;
-        if (chipEl) chipEl.textContent = `🤖 IA: cuota, reintentando en ${wait/1000}s... (${attempt}/3)`;
-        await new Promise(res => setTimeout(res, wait));
-        return callGemini(attempt + 1);
-      }
-      // Tercer 429 consecutivo → cooldown de 5 minutos y abandonar
+      // Primer 429 → activar cooldown de 5 min y abandonar (sin reintentos)
+      // Evita spam de errores en consola cuando la quota está agotada
       _lcGeminiCooldown = Date.now() + 5 * 60 * 1000;
       throw new Error('Gemini HTTP 429 — cooldown 5min activado');
     }
