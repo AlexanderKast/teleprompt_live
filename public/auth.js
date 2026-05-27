@@ -7,8 +7,8 @@
 //  CONFIGURACIÓN — reemplaza con los valores de tu proyecto
 //  Dashboard Supabase → Settings → API
 // ────────────────────────────────────────────────────────────
-const SB_URL  = 'YOUR_SUPABASE_PROJECT_URL';  // https://xxxx.supabase.co
-const SB_ANON = 'YOUR_SUPABASE_ANON_KEY';     // clave anon pública (segura de exponer)
+const SB_URL  = 'https://ydpnzcspwlwfcxzizqct.supabase.co';
+const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlkcG56Y3Nwd2x3ZmN4eml6cWN0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4NDEyOTQsImV4cCI6MjA5NTQxNzI5NH0.X3PZOH-i2_bpr_4KGi5D4I3EgIeO8a5peJCbv77hA8s';
 
 // ────────────────────────────────────────────────────────────
 //  CLIENTE
