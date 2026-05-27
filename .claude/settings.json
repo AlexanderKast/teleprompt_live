@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "fakelive-pro": {
+      "command": "node",
+      "args": ["./fakelive-mcp/index.js"],
+      "env": {
+        "FAKELIVE_URL": "http://localhost:3000"
+      }
+    }
+  }
+}
