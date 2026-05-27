@@ -1,10 +1,11 @@
 -- ============================================================
 --  FakeLive Pro — lc_avatars
 --
---  Ejecutar UNA VEZ en:
+--  Ejecutar en:
 --  https://supabase.com/dashboard/project/ydpnzcspwlwfcxzizqct
 --  → SQL Editor → New query → pegar esto → Run
 --
+--  Es IDEMPOTENTE: seguro de re-ejecutar aunque la tabla/política ya existan.
 --  Las subidas de avatares las hace el servidor con service_role
 --  (no se necesitan políticas de INSERT aquí).
 -- ============================================================
@@ -29,6 +30,8 @@ CREATE INDEX IF NOT EXISTS lc_avatars_assign_idx
 ALTER TABLE public.lc_avatars ENABLE ROW LEVEL SECURITY;
 
 -- Lectura pública — cualquier visitante puede ver los avatares
+-- (DROP IF EXISTS hace la migración idempotente)
+DROP POLICY IF EXISTS "lc_avatars_public_select" ON public.lc_avatars;
 CREATE POLICY "lc_avatars_public_select"
   ON public.lc_avatars
   FOR SELECT

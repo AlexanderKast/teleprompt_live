@@ -1747,8 +1747,9 @@ let _lcComments      = [];   // lista generada actual
 let _lcAvatarMap     = {};   // username → url
 let _lcDbAvatars     = null; // null = sin cargar, [] = cargado (vacío o con datos)
 let _lcNamesSeeds    = {};   // username → assigned display name
-let _lcAiFillerPool  = null; // [] cuando la IA generó comentarios; null = no generado aún
-let _lcAiScriptKey   = '';   // hash del script para invalidar caché de IA
+let _lcAiFillerPool    = null;  // [] cuando la IA generó comentarios; null = no generado aún
+let _lcAiScriptKey     = '';    // hash del script para invalidar caché de IA
+let _lcAiFillerLoading = false; // lock: evita llamadas concurrentes a Gemini
 
 // ── Helpers ───────────────────────────────────────────────
 function lcRand(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
@@ -1820,12 +1821,15 @@ async function lcGenerateAiFiller(scriptText, country, productoCtx = {}) {
   const { tipo = 'producto', nombreProducto = '', descProducto = '' } = productoCtx;
   const cacheKey = (scriptText || '').slice(0, 200) + country + tipo + nombreProducto + descProducto.slice(0, 100);
   if (_lcAiFillerPool !== null && _lcAiScriptKey === cacheKey) return; // ya cacheado
+  if (_lcAiFillerLoading) return; // ya hay una llamada en progreso — ignorar duplicados
+  _lcAiFillerLoading = true;
 
   const geminiKey = localStorage.getItem('fakelive_gemini_key') || '';
   const chipEl    = document.getElementById('lc-chip-ai');
 
   if (!geminiKey) {
-    _lcAiFillerPool = [];
+    _lcAiFillerPool    = [];
+    _lcAiFillerLoading = false;
     if (chipEl) { chipEl.className = 'lc-chip lc-chip-warn'; chipEl.textContent = '🟡 IA comentarios: sin Gemini key'; }
     return;
   }
@@ -1840,7 +1844,8 @@ async function lcGenerateAiFiller(scriptText, country, productoCtx = {}) {
     .join('. ');
 
   if (!topicLines.trim()) {
-    _lcAiFillerPool = [];
+    _lcAiFillerPool    = [];
+    _lcAiFillerLoading = false;
     if (chipEl) { chipEl.className = 'lc-chip lc-chip-warn'; chipEl.textContent = '🟡 IA: sin contenido en guion'; }
     return;
   }
@@ -1920,6 +1925,8 @@ Responde SOLO con el JSON array, sin texto adicional ni bloques de código markd
     console.warn('[LC] AI filler falló:', e.message, '→ usando pools estáticos');
     _lcAiFillerPool = [];
     if (chipEl) { chipEl.className = 'lc-chip lc-chip-warn'; chipEl.textContent = '🟡 IA: error — usando pool estático'; }
+  } finally {
+    _lcAiFillerLoading = false; // siempre liberar el lock
   }
 }
 
@@ -2169,10 +2176,12 @@ async function lcUpdateStatus() {
 }
 
 // ── Enviar Gemini key al servidor (para generación de avatares ad-hoc) ──
+// Solo en desarrollo local — Vercel/producción no tiene servidor Express
 function lcSendConfigToServer() {
+  const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+  if (!isLocal) return;
   const nano = localStorage.getItem('fakelive_gemini_key') || '';
   if (!nano) return;
-  // Falla silenciosamente — el endpoint solo existe en modo servidor local
   fetch('/api/config', {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -2476,9 +2485,10 @@ function lcBindAll() {
   });
 
   document.getElementById('btn-lc-regenerate')?.addEventListener('click', () => {
-    // Limpiar caché de IA para forzar regeneración con el guion actual
-    _lcAiFillerPool = null;
-    _lcAiScriptKey  = '';
+    // Forzar regeneración: limpiar caché Y liberar lock (permite nueva llamada inmediata)
+    _lcAiFillerPool    = null;
+    _lcAiScriptKey     = '';
+    _lcAiFillerLoading = false; // liberar lock explícitamente para que el regenerate tenga prioridad
     lcRenderPreview();
     const ta   = document.getElementById('script-textarea');
     const text = ta?.value?.trim() || '';
