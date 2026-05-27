@@ -8,7 +8,7 @@
 //  Dashboard Supabase → Settings → API
 // ────────────────────────────────────────────────────────────
 const SB_URL  = 'YOUR_SUPABASE_PROJECT_URL';  // https://xxxx.supabase.co
-const SB_ANON = 'YOUR_SUPABASE_ANON_KEY';     // clave anon pública (segura para exponer)
+const SB_ANON = 'YOUR_SUPABASE_ANON_KEY';     // clave anon pública (segura de exponer)
 
 // ────────────────────────────────────────────────────────────
 //  CLIENTE
@@ -18,13 +18,9 @@ let _sbSession = null;
 const _sbDebounce = {};
 
 function sbClientInit() {
-  if (!window.supabase) {
-    console.warn('[SB] SDK de Supabase no cargado');
-    return;
-  }
+  if (!window.supabase) { console.warn('[SB] SDK de Supabase no cargado'); return; }
   if (SB_URL === 'YOUR_SUPABASE_PROJECT_URL') {
-    console.warn('[SB] Configura SB_URL y SB_ANON en auth.js');
-    // Modo offline: mostrar app sin auth
+    console.warn('[SB] Configura SB_URL y SB_ANON en auth.js → modo offline activo');
     return;
   }
   try {
@@ -37,18 +33,16 @@ function sbClientInit() {
 }
 
 // ────────────────────────────────────────────────────────────
-//  PANTALLA DE AUTH
+//  SHOW / HIDE AUTH SCREEN
 // ────────────────────────────────────────────────────────────
 function sbShowAuth() {
   const el = document.getElementById('auth-screen');
   if (el) el.classList.add('auth-visible');
 }
-
 function sbHideAuth() {
   const el = document.getElementById('auth-screen');
   if (el) el.classList.remove('auth-visible');
 }
-
 function sbSetAuthError(msg) {
   const el = document.getElementById('auth-error');
   if (!el) return;
@@ -56,88 +50,92 @@ function sbSetAuthError(msg) {
   el.style.display = msg ? 'block' : 'none';
 }
 
-function sbSetAuthLoading(btnId, loading, label) {
-  const btn = document.getElementById(btnId);
-  if (!btn) return;
-  btn.disabled = loading;
-  btn.textContent = loading ? 'Enviando...' : label;
-}
-
-// ── Tabs email / teléfono ─────────────────────────────────
-function sbInitAuthTabs() {
-  document.querySelectorAll('.auth-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('auth-tab-active'));
-      document.querySelectorAll('.auth-tab-content').forEach(c => { c.style.display = 'none'; });
-      tab.classList.add('auth-tab-active');
-      const content = document.getElementById('auth-tab-' + tab.dataset.tab);
-      if (content) content.style.display = '';
-      sbSetAuthError('');
-    });
-  });
-}
-
-// ── Email — magic link ────────────────────────────────────
+// ────────────────────────────────────────────────────────────
+//  MODO LOGIN  (solo correo → magic link)
+// ────────────────────────────────────────────────────────────
 async function sbSendMagicLink() {
   if (!sbClient) return;
-  const input = document.getElementById('auth-email-input');
-  const email = input?.value?.trim();
+  const email = document.getElementById('auth-email-input')?.value?.trim();
+  if (!email || !email.includes('@')) { sbSetAuthError('Ingresa un correo electrónico válido'); return; }
+
+  const btn = document.getElementById('btn-send-magic-link');
+  btn.disabled = true;
+  btn.textContent = 'Enviando...';
+  sbSetAuthError('');
+
+  try {
+    const { error } = await sbClient.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: window.location.origin + window.location.pathname }
+    });
+    if (error) throw error;
+    sbShowConfirmation();
+  } catch (e) {
+    sbSetAuthError(e.message || 'Error al enviar el enlace. Intenta de nuevo.');
+    btn.disabled = false;
+    btn.textContent = '✉️ Enviar enlace de acceso';
+  }
+}
+
+// ────────────────────────────────────────────────────────────
+//  MODO REGISTRO  (Nombre + WhatsApp + Correo → magic link)
+// ────────────────────────────────────────────────────────────
+async function sbSendRegister() {
+  if (!sbClient) return;
+  const name     = document.getElementById('auth-name-input')?.value?.trim();
+  const whatsapp = document.getElementById('auth-whatsapp-input')?.value?.trim();
+  const email    = document.getElementById('auth-register-email-input')?.value?.trim();
+
+  if (!name)                       { sbSetAuthError('Ingresa tu nombre'); return; }
   if (!email || !email.includes('@')) { sbSetAuthError('Ingresa un correo válido'); return; }
 
-  sbSetAuthLoading('btn-send-magic-link', true);
+  const btn = document.getElementById('btn-send-register');
+  btn.disabled = true;
+  btn.textContent = 'Enviando...';
   sbSetAuthError('');
 
-  const redirectTo = window.location.origin + window.location.pathname;
+  // Guardar temporalmente para crear el perfil al volver del magic link
+  localStorage.setItem('_sb_pending_profile', JSON.stringify({ nombre: name, whatsapp }));
+
   try {
-    const { error } = await sbClient.auth.signInWithOtp({ email, options: { emailRedirectTo: redirectTo } });
+    const { error } = await sbClient.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: window.location.origin + window.location.pathname,
+        data: { display_name: name, whatsapp }   // guardado en user_metadata de Supabase
+      }
+    });
     if (error) throw error;
-    document.getElementById('auth-email-form').style.display = 'none';
-    document.getElementById('auth-email-sent').style.display = '';
+    sbShowConfirmation();
   } catch (e) {
-    sbSetAuthError(e.message || 'Error enviando el enlace');
-    sbSetAuthLoading('btn-send-magic-link', false, '✉️ Enviar enlace mágico');
+    sbSetAuthError(e.message || 'Error al crear la cuenta. Intenta de nuevo.');
+    btn.disabled = false;
+    btn.textContent = '🚀 Crear cuenta';
   }
 }
 
-// ── Teléfono — OTP SMS ────────────────────────────────────
-let _sbPhoneForOtp = '';
-
-async function sbSendPhoneOtp() {
-  if (!sbClient) return;
-  const phone = document.getElementById('auth-phone-input')?.value?.trim();
-  if (!phone || phone.length < 8) { sbSetAuthError('Ingresa tu número con código de país (+57...)'); return; }
-
-  sbSetAuthLoading('btn-send-phone-otp', true);
+// ────────────────────────────────────────────────────────────
+//  ESTADOS DE PANTALLA
+// ────────────────────────────────────────────────────────────
+function sbShowConfirmation() {
+  document.getElementById('auth-mode-login')?.style    && (document.getElementById('auth-mode-login').style.display = 'none');
+  document.getElementById('auth-mode-register')?.style && (document.getElementById('auth-mode-register').style.display = 'none');
+  document.getElementById('auth-email-sent').style.display = '';
   sbSetAuthError('');
-
-  try {
-    const { error } = await sbClient.auth.signInWithOtp({ phone });
-    if (error) throw error;
-    _sbPhoneForOtp = phone;
-    document.getElementById('auth-phone-form').style.display = 'none';
-    document.getElementById('auth-otp-form').style.display  = '';
-  } catch (e) {
-    sbSetAuthError(e.message || 'Error enviando el SMS');
-    sbSetAuthLoading('btn-send-phone-otp', false, '📲 Enviar código SMS');
-  }
 }
 
-async function sbVerifyPhoneOtp() {
-  if (!sbClient) return;
-  const token = document.getElementById('auth-otp-input')?.value?.trim();
-  if (!token || token.length < 6) { sbSetAuthError('Ingresa el código de 6 dígitos'); return; }
-
-  sbSetAuthLoading('btn-verify-otp', true);
+function sbShowLogin() {
+  document.getElementById('auth-mode-login').style.display    = '';
+  document.getElementById('auth-mode-register').style.display = 'none';
+  document.getElementById('auth-email-sent').style.display    = 'none';
   sbSetAuthError('');
+}
 
-  try {
-    const { error } = await sbClient.auth.verifyOtp({ phone: _sbPhoneForOtp, token, type: 'sms' });
-    if (error) throw error;
-    // onAuthStateChange manejará el login
-  } catch (e) {
-    sbSetAuthError(e.message || 'Código incorrecto. Intenta de nuevo.');
-    sbSetAuthLoading('btn-verify-otp', false, '✓ Verificar código');
-  }
+function sbShowRegister() {
+  document.getElementById('auth-mode-login').style.display    = 'none';
+  document.getElementById('auth-mode-register').style.display = '';
+  document.getElementById('auth-email-sent').style.display    = 'none';
+  sbSetAuthError('');
 }
 
 // ────────────────────────────────────────────────────────────
@@ -153,7 +151,6 @@ function sbSetUserCard(user) {
   }
   card.style.display = 'flex';
 }
-
 function sbClearUserCard() {
   const card = document.getElementById('sb-user-card');
   if (card) card.style.display = 'none';
@@ -172,10 +169,49 @@ window.sbSignOut = async function () {
 // ────────────────────────────────────────────────────────────
 async function sbLoadFromCloud() {
   if (!sbClient || !_sbSession) return;
-  const uid = _sbSession.user.id;
+  const uid  = _sbSession.user.id;
+  const meta = _sbSession.user.user_metadata || {};
 
   try {
-    // 1. Settings / Metadata / Profile
+    // ── ¿Usuario nuevo? Crear perfil automáticamente ──────────
+    const { data: existingRow } = await sbClient
+      .from('user_settings')
+      .select('user_id')
+      .eq('user_id', uid)
+      .maybeSingle();
+
+    if (!existingRow) {
+      // Recuperar datos de registro (metadata de Supabase o localStorage temporal)
+      let pending = {};
+      try { pending = JSON.parse(localStorage.getItem('_sb_pending_profile') || '{}'); } catch (_) {}
+      const nombre   = meta.display_name || pending.nombre   || '';
+      const whatsapp = meta.whatsapp     || pending.whatsapp || '';
+
+      if (nombre) {
+        // Pre-poblar perfil en Supabase
+        await sbClient.from('user_settings').upsert({
+          user_id:  uid,
+          profile:  { nombre, whatsapp },
+          settings: {},
+          metadata: {},
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
+
+        // Reflejar en localStorage
+        localStorage.setItem('fakelive_profile', JSON.stringify({ nombre, whatsapp }));
+        localStorage.removeItem('_sb_pending_profile');
+
+        // Actualizar el campo de perfil en el sidebar si ya está renderizado
+        const el = document.getElementById('profile-nombre');
+        if (el) { el.value = nombre; }
+        const elW = document.getElementById('profile-whatsapp');
+        if (elW) { elW.value = whatsapp; }
+
+        if (typeof showToast === 'function') showToast(`Bienvenido/a, ${nombre} 👋`, 'success');
+      }
+    }
+
+    // ── Cargar settings / metadata / profile ─────────────────
     const { data: row } = await sbClient
       .from('user_settings')
       .select('settings, metadata, profile')
@@ -186,7 +222,7 @@ async function sbLoadFromCloud() {
       if (row.settings && Object.keys(row.settings).length) {
         let current = {};
         try { current = JSON.parse(localStorage.getItem('fakelive_stream') || '{}'); } catch (_) {}
-        const streamKey = current['stream-key']; // conservar la stream key local (no se sincroniza)
+        const streamKey = current['stream-key'];           // conservar stream key local
         const merged    = Object.assign({}, current, row.settings);
         if (streamKey !== undefined) merged['stream-key'] = streamKey;
         localStorage.setItem('fakelive_stream', JSON.stringify(merged));
@@ -197,7 +233,7 @@ async function sbLoadFromCloud() {
         localStorage.setItem('fakelive_profile', JSON.stringify(row.profile));
     }
 
-    // 2. Guiones guardados
+    // ── Cargar guiones guardados ──────────────────────────────
     const { data: scripts } = await sbClient
       .from('scripts')
       .select('name, content, duration, created_at')
@@ -207,15 +243,14 @@ async function sbLoadFromCloud() {
       scripts.forEach(s => {
         const safe = s.name.replace(/[^a-zA-Z0-9_\-\s]/g, '').replace(/\s+/g, '_');
         localStorage.setItem('fakelive_saved_' + safe, JSON.stringify({
-          name:      s.name,
-          content:   s.content,
-          duration:  s.duration || 0,
+          name: s.name, content: s.content,
+          duration: s.duration || 0,
           createdAt: new Date(s.created_at).getTime()
         }));
       });
     }
 
-    // 3. Historial de sesiones (últimas 20)
+    // ── Cargar historial de sesiones ──────────────────────────
     const { data: sessions } = await sbClient
       .from('sessions')
       .select('date, duration, completion_percent, comments_triggered, emotions_triggered, countdowns_triggered')
@@ -236,17 +271,22 @@ async function sbLoadFromCloud() {
       ));
     }
 
-    // Re-renderizar secciones del sidebar si ya están inicializadas
-    if (typeof sbRenderSavedScripts === 'function') sbRenderSavedScripts();
-    if (typeof sbRenderSessions    === 'function') sbRenderSessions();
-    if (typeof sbLoadMetadata      === 'function') sbLoadMetadata();
-    if (typeof sbLoadProfile       === 'function') sbLoadProfile();
-    if (typeof sbLoadStreamSettings === 'function') {
+    // ── Re-renderizar sidebar ─────────────────────────────────
+    if (typeof sbRenderSavedScripts  === 'function') sbRenderSavedScripts();
+    if (typeof sbRenderSessions      === 'function') sbRenderSessions();
+    if (typeof sbLoadMetadata        === 'function') sbLoadMetadata();
+    if (typeof sbLoadProfile         === 'function') sbLoadProfile();
+    if (typeof sbLoadStreamSettings  === 'function') {
       sbLoadStreamSettings();
       if (typeof sbApplyStreamSettings === 'function') sbApplyStreamSettings();
     }
 
-    if (typeof showToast === 'function') showToast('Datos sincronizados ✓', 'success');
+    if (!existingRow && !meta.display_name) {
+      // Usuario nuevo sin nombre: toast genérico
+      if (typeof showToast === 'function') showToast('Sesión iniciada ✓', 'success');
+    } else if (existingRow) {
+      if (typeof showToast === 'function') showToast('Datos sincronizados ✓', 'success');
+    }
   } catch (e) {
     console.error('[SB] Error cargando datos:', e);
     if (typeof showToast === 'function') showToast('Error al cargar desde la nube', 'error');
@@ -254,7 +294,7 @@ async function sbLoadFromCloud() {
 }
 
 // ────────────────────────────────────────────────────────────
-//  SINCRONIZACIÓN — localStorage → Supabase (debounced 1.5s)
+//  SINCRONIZACIÓN  localStorage → Supabase (debounced 1.5s)
 // ────────────────────────────────────────────────────────────
 window.sbSync = function (type, payload) {
   if (!sbClient || !_sbSession) return;
@@ -303,7 +343,7 @@ async function _sbDoSync(type, payload) {
       });
     }
   } catch (e) {
-    console.error('[SB] Error sincronizando [' + type + ']:', e.message);
+    console.error('[SB] Sync error [' + type + ']:', e.message);
   }
 }
 
@@ -311,11 +351,7 @@ async function _sbDoSync(type, payload) {
 //  LISTENER DE ESTADO DE AUTH
 // ────────────────────────────────────────────────────────────
 function sbInitAuthListener() {
-  if (!sbClient) {
-    // Sin configuración de Supabase: ocultar pantalla de auth y continuar offline
-    sbHideAuth();
-    return;
-  }
+  if (!sbClient) { sbHideAuth(); return; } // sin configurar → modo offline directo
 
   sbClient.auth.onAuthStateChange(async (event, session) => {
     _sbSession = session;
@@ -328,6 +364,7 @@ function sbInitAuthListener() {
     } else {
       sbClearUserCard();
       sbShowAuth();
+      sbShowLogin(); // siempre volver al modo login al cerrar sesión
     }
   });
 
@@ -341,40 +378,35 @@ function sbInitAuthListener() {
 //  BINDINGS DE EVENTOS
 // ────────────────────────────────────────────────────────────
 function sbBindAuthEvents() {
-  sbInitAuthTabs();
-
-  // Magic link
+  // ── Modo Login ────────────────────────────────────────────
   document.getElementById('btn-send-magic-link')
     ?.addEventListener('click', sbSendMagicLink);
   document.getElementById('auth-email-input')
     ?.addEventListener('keydown', e => { if (e.key === 'Enter') sbSendMagicLink(); });
+
+  // Ir a Registro
+  document.getElementById('btn-go-register')
+    ?.addEventListener('click', sbShowRegister);
+
+  // ── Modo Registro ─────────────────────────────────────────
+  document.getElementById('btn-send-register')
+    ?.addEventListener('click', sbSendRegister);
+  document.getElementById('auth-register-email-input')
+    ?.addEventListener('keydown', e => { if (e.key === 'Enter') sbSendRegister(); });
+
+  // Ir a Login
+  document.getElementById('btn-go-login')
+    ?.addEventListener('click', sbShowLogin);
+
+  // ── Confirmación ─────────────────────────────────────────
   document.getElementById('btn-email-back')
-    ?.addEventListener('click', () => {
-      document.getElementById('auth-email-sent').style.display = 'none';
-      document.getElementById('auth-email-form').style.display = '';
-    });
+    ?.addEventListener('click', sbShowLogin);
 
-  // OTP teléfono
-  document.getElementById('btn-send-phone-otp')
-    ?.addEventListener('click', sbSendPhoneOtp);
-  document.getElementById('auth-phone-input')
-    ?.addEventListener('keydown', e => { if (e.key === 'Enter') sbSendPhoneOtp(); });
-  document.getElementById('btn-verify-otp')
-    ?.addEventListener('click', sbVerifyPhoneOtp);
-  document.getElementById('auth-otp-input')
-    ?.addEventListener('keydown', e => { if (e.key === 'Enter') sbVerifyPhoneOtp(); });
-  document.getElementById('btn-phone-back')
-    ?.addEventListener('click', () => {
-      document.getElementById('auth-otp-form').style.display  = 'none';
-      document.getElementById('auth-phone-form').style.display = '';
-      _sbPhoneForOtp = '';
-    });
-
-  // Saltar login (modo offline)
+  // ── Saltar login ──────────────────────────────────────────
   document.getElementById('btn-skip-auth')
     ?.addEventListener('click', sbHideAuth);
 
-  // Cerrar sesión
+  // ── Cerrar sesión ─────────────────────────────────────────
   document.getElementById('btn-sb-signout')
     ?.addEventListener('click', () => window.sbSignOut());
 }

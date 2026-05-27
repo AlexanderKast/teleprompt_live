@@ -107,46 +107,46 @@
       <p>Teleprompter inteligente para tus lives</p>
     </div>
 
-    <div class="auth-tabs">
-      <button class="auth-tab auth-tab-active" data-tab="email">📧 Email</button>
-      <button class="auth-tab" data-tab="phone">📱 Teléfono</button>
+    <!-- ── MODO LOGIN (por defecto) ── -->
+    <div id="auth-mode-login">
+      <div class="auth-field-label">Correo electrónico</div>
+      <input id="auth-email-input" class="auth-input" type="email"
+             placeholder="tu@correo.com" autocomplete="email"/>
+      <button id="btn-send-magic-link" class="auth-btn-primary">✉️ Enviar enlace de acceso</button>
+      <p class="auth-hint">Sin contraseña. Solo haz clic en el enlace que te enviamos.</p>
+      <p class="auth-mode-switch">
+        ¿Nuevo aquí?
+        <button id="btn-go-register" class="auth-btn-link">Crear cuenta gratis</button>
+      </p>
     </div>
 
-    <!-- Tab email -->
-    <div id="auth-tab-email" class="auth-tab-content">
-
-      <div id="auth-email-form">
-        <input id="auth-email-input" class="auth-input" type="email"
-               placeholder="tu@correo.com" autocomplete="email"/>
-        <button id="btn-send-magic-link" class="auth-btn-primary">✉️ Enviar enlace mágico</button>
-        <p class="auth-hint">Sin contraseña. Recibirás un link en tu correo.</p>
-      </div>
-
-      <div id="auth-email-sent" class="auth-sent-state" style="display:none;">
-        <span class="auth-sent-icon">✉️</span>
-        <h3>Revisa tu correo</h3>
-        <p>Haz clic en el enlace que te enviamos para entrar.</p>
-        <button id="btn-email-back" class="auth-btn-link">← Cambiar correo</button>
-      </div>
+    <!-- ── MODO REGISTRO ── -->
+    <div id="auth-mode-register" style="display:none;">
+      <div class="auth-field-label">Tu nombre</div>
+      <input id="auth-name-input" class="auth-input" type="text"
+             placeholder="¿Cómo te llaman?" autocomplete="name"/>
+      <div class="auth-field-label">WhatsApp</div>
+      <input id="auth-whatsapp-input" class="auth-input" type="tel"
+             placeholder="+57 300 123 4567" autocomplete="tel"/>
+      <div class="auth-field-label">Correo electrónico</div>
+      <input id="auth-register-email-input" class="auth-input" type="email"
+             placeholder="tu@correo.com" autocomplete="email"/>
+      <button id="btn-send-register" class="auth-btn-primary">🚀 Crear cuenta</button>
+      <p class="auth-hint">Recibirás un enlace de acceso en tu correo. Sin contraseña.</p>
+      <p class="auth-mode-switch">
+        ¿Ya tienes cuenta?
+        <button id="btn-go-login" class="auth-btn-link">Iniciar sesión</button>
+      </p>
     </div>
 
-    <!-- Tab teléfono -->
-    <div id="auth-tab-phone" class="auth-tab-content" style="display:none;">
-
-      <div id="auth-phone-form">
-        <input id="auth-phone-input" class="auth-input" type="tel"
-               placeholder="+57 300 123 4567" autocomplete="tel"/>
-        <button id="btn-send-phone-otp" class="auth-btn-primary">📲 Enviar código SMS</button>
-        <p class="auth-hint">Te enviaremos un código de 6 dígitos por SMS.</p>
-      </div>
-
-      <div id="auth-otp-form" style="display:none;">
-        <p style="font-size:13px;color:rgba(228,225,240,0.55);text-align:center;margin:0 0 10px;">Ingresa el código de 6 dígitos</p>
-        <input id="auth-otp-input" class="auth-input" type="number"
-               placeholder="123456" style="text-align:center;font-size:22px;letter-spacing:6px;"/>
-        <button id="btn-verify-otp" class="auth-btn-primary">✓ Verificar código</button>
-        <button id="btn-phone-back" class="auth-btn-link" style="display:block;text-align:center;margin-top:6px;">← Cambiar número</button>
-      </div>
+    <!-- ── CONFIRMACIÓN (ambos modos) ── -->
+    <div id="auth-email-sent" class="auth-sent-state" style="display:none;">
+      <span class="auth-sent-icon">✉️</span>
+      <h3>Revisa tu correo</h3>
+      <p>Haz clic en el enlace que te enviamos para entrar.<br/>
+         <span style="font-size:11px;color:rgba(228,225,240,0.35);">Si no llega en 1 minuto, revisa el spam.</span>
+      </p>
+      <button id="btn-email-back" class="auth-btn-link">← Volver</button>
     </div>
 
     <div id="auth-error"></div>
