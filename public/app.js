@@ -1751,6 +1751,16 @@ let _lcAiFillerPool    = null;  // [] cuando la IA generó comentarios; null = n
 let _lcAiScriptKey     = '';    // hash del script para invalidar caché de IA
 let _lcAiFillerLoading = false; // lock: evita llamadas concurrentes a Gemini
 
+// ── Avatar fallback con randomuser.me (retratos reales, sin API key) ──
+// Determinístico: mismo username → mismo retrato siempre
+function lcGetFallbackAvatar(username, gender) {
+  let h = 5381;
+  for (let i = 0; i < username.length; i++) h = (Math.imul(h, 31) + username.charCodeAt(i)) | 0;
+  const n = (Math.abs(h) % 70) + 1; // 1-70 (rango seguro de randomuser.me)
+  const g = gender === 'male' ? 'men' : 'women';
+  return `https://randomuser.me/api/portraits/${g}/${n}.jpg`;
+}
+
 // ── Helpers ───────────────────────────────────────────────
 function lcRand(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
@@ -2119,14 +2129,24 @@ function lcRenderPreview() {
 
   // Tabla (máx 15 filas preview)
   const preview = _lcComments.slice(0, 15);
+
+  // Asignar avatares fallback SINCRÓNICAMENTE antes de renderizar
+  // (randomuser.me es determinístico — mismo username = mismo retrato)
+  preview.forEach(c => {
+    if (!_lcAvatarMap[c.username]) {
+      const gender = c.gender || (Math.random() < 0.6 ? 'female' : 'male');
+      _lcAvatarMap[c.username] = lcGetFallbackAvatar(c.username, gender);
+    }
+  });
+
   let html = '<table><thead><tr><th>Avatar</th><th>Usuario</th><th>Comentario</th><th>Tiempo</th></tr></thead><tbody>';
   preview.forEach(c => {
     const text      = c.text.length > 55 ? c.text.slice(0, 54) + '…' : c.text;
     const avatarUrl = _lcAvatarMap[c.username];
     const isReal    = c.type === 'scripted';
-    const imgHtml   = avatarUrl
-      ? `<div class="lc-avatar-circle"><img src="${avatarUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;"/></div>`
-      : `<div class="lc-avatar-circle" style="background:rgba(255,179,181,0.12);display:flex;align-items:center;justify-content:center;font-size:10px;color:rgba(228,225,240,0.3);">${isReal?'★':'·'}</div>`;
+    const imgHtml = avatarUrl
+      ? `<div class="lc-avatar-circle" data-username="${escHtml(c.username)}"><img src="${avatarUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" loading="lazy" onerror="this.parentElement.innerHTML='<span style=opacity:.3;font-size:10px>👤</span>'"/></div>`
+      : `<div class="lc-avatar-circle" data-username="${escHtml(c.username)}" style="background:rgba(255,179,181,0.12);display:flex;align-items:center;justify-content:center;font-size:10px;color:rgba(228,225,240,0.3);">👤</div>`;
     const nameColor = isReal ? '#ffb3b5' : 'rgba(228,225,240,0.7)';
     html += `<tr>
       <td>${imgHtml}</td>
@@ -2193,30 +2213,57 @@ function lcSendConfigToServer() {
 // Se llama automáticamente al renderizar — sin intervención del usuario
 async function lcAutoAssignAvatars() {
   if (!_lcComments.length) return;
-  await lcFetchDbAvatars();
   const cfg    = lcGetConfig();
   const unique = [...new Set(_lcComments.map(c => c.username))];
+
+  // ── Fase 1: fallback inmediato con randomuser.me (sin esperar la DB) ──
+  let needsRender = false;
   for (const username of unique) {
-    if (_lcAvatarMap[username]) continue;
-    const c        = _lcComments.find(x => x.username === username);
-    const gender   = c?.gender || (Math.random() < 0.6 ? 'female' : 'male');
-    const ageGroup = lcDetectAgeGroup(username);
-    const dbUrl    = lcPickDbAvatar(gender, cfg.country, ageGroup);
-    _lcAvatarMap[username] = dbUrl ||
-      `https://api.dicebear.com/9.x/personas/svg?seed=${encodeURIComponent(username)}&size=100`;
+    if (!_lcAvatarMap[username]) {
+      const c      = _lcComments.find(x => x.username === username);
+      const gender = c?.gender || (Math.random() < 0.6 ? 'female' : 'male');
+      _lcAvatarMap[username] = lcGetFallbackAvatar(username, gender);
+      needsRender = true;
+    }
   }
-  lcRenderPreviewAvatars();
-  lcRefreshCsvPreview();
+  if (needsRender) {
+    lcRenderPreviewAvatars();
+    lcRefreshCsvPreview();
+  }
+
+  // ── Fase 2: mejorar con avatares de la DB si hay (async) ──
+  await lcFetchDbAvatars();
+  if (_lcDbAvatars?.length) {
+    let dbUpdated = false;
+    for (const username of unique) {
+      const c        = _lcComments.find(x => x.username === username);
+      const gender   = c?.gender || 'female';
+      const ageGroup = lcDetectAgeGroup(username);
+      const dbUrl    = lcPickDbAvatar(gender, cfg.country, ageGroup);
+      if (dbUrl && _lcAvatarMap[username] !== dbUrl) {
+        _lcAvatarMap[username] = dbUrl;
+        dbUpdated = true;
+      }
+    }
+    if (dbUpdated) {
+      lcRenderPreviewAvatars();
+      lcRefreshCsvPreview();
+    }
+  }
 }
 
 // Actualiza solo las imágenes del preview sin regenerar todo
 function lcRenderPreviewAvatars() {
-  document.querySelectorAll('.lc-avatar-circle').forEach((el, i) => {
-    const c = _lcComments[i];
-    if (!c) return;
-    const url = _lcAvatarMap[c.username];
-    if (url && !el.querySelector('img')) {
-      el.innerHTML = `<img src="${url}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;"/>`;
+  // Usar data-username en vez de índice (más robusto cuando hay re-renders parciales)
+  document.querySelectorAll('.lc-avatar-circle[data-username]').forEach(el => {
+    const username = el.dataset.username;
+    const url      = _lcAvatarMap[username];
+    if (!url) return;
+    const existing = el.querySelector('img');
+    if (existing) {
+      if (existing.src !== url) existing.src = url; // actualizar si cambió (DB upgrade)
+    } else {
+      el.innerHTML = `<img src="${url}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" loading="lazy" onerror="this.parentElement.innerHTML='<span style=opacity:.3;font-size:10px>👤</span>'"/>`;
     }
   });
 }
