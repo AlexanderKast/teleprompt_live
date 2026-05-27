@@ -1900,9 +1900,9 @@ Responde SOLO con el JSON array, sin texto adicional ni bloques de código markd
       }
     );
     if (r.status === 429 && attempt < 3) {
-      // Rate limit → esperar y reintentar (2s, 5s)
-      const wait = attempt === 1 ? 2000 : 5000;
-      if (chipEl) chipEl.textContent = `🤖 IA: límite alcanzado, reintentando en ${wait/1000}s...`;
+      // Rate limit → esperar y reintentar con backoff (15s, 30s)
+      const wait = attempt === 1 ? 15000 : 30000;
+      if (chipEl) chipEl.textContent = `🤖 IA: límite de cuota, reintentando en ${wait/1000}s...`;
       await new Promise(res => setTimeout(res, wait));
       return callGemini(attempt + 1);
     }
@@ -2485,10 +2485,15 @@ function lcBindAll() {
   });
 
   document.getElementById('btn-lc-regenerate')?.addEventListener('click', () => {
-    // Forzar regeneración: limpiar caché Y liberar lock (permite nueva llamada inmediata)
-    _lcAiFillerPool    = null;
-    _lcAiScriptKey     = '';
-    _lcAiFillerLoading = false; // liberar lock explícitamente para que el regenerate tenga prioridad
+    // Si ya hay una llamada en curso, bloquear el click — el retry async todavía corre
+    if (_lcAiFillerLoading) {
+      const chipEl = document.getElementById('lc-chip-ai');
+      if (chipEl) chipEl.textContent = '🤖 IA: generando... (espera un momento)';
+      return;
+    }
+    // Limpiar caché para forzar regeneración
+    _lcAiFillerPool = null;
+    _lcAiScriptKey  = '';
     lcRenderPreview();
     const ta   = document.getElementById('script-textarea');
     const text = ta?.value?.trim() || '';
