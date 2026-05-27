@@ -1856,6 +1856,8 @@ function lcAutoDetectDuration() {
 }
 
 // ── Generar lista de comentarios ─────────────────────────
+// Los [COMENTARIO] del guion mantienen su username original.
+// Los de relleno (opcionales) reciben nombres aleatorios.
 function lcGenerateComments(keepNames) {
   const cfg      = lcGetConfig();
   const country  = cfg.country;
@@ -1864,72 +1866,63 @@ function lcGenerateComments(keepNames) {
   const fmt      = cfg.timeFormat;
   const comments = [];
 
-  // 1. Comentarios del guion
-  if (cfg.scripted) {
-    const ta     = document.getElementById('script-textarea');
-    const blocks = ta ? window.parseScript(ta.value) : [];
-    blocks.filter(b => b.type === 'COMENTARIO').forEach(b => {
-      comments.push({ sec: b.time, type: 'scripted', text: b.message || b.content, original: b.username });
+  // 1. Comentarios del guion — username original del script, SIN reemplazar
+  const ta     = document.getElementById('script-textarea');
+  const blocks = ta ? window.parseScript(ta.value) : [];
+  blocks.filter(b => b.type === 'COMENTARIO').forEach(b => {
+    const username = b.username || (b.content.includes(':') ? b.content.split(':')[0].trim() : 'Usuario');
+    comments.push({
+      sec:      b.time,
+      type:     'scripted',
+      text:     b.message || b.content,
+      username,
+      gender:   username.toLowerCase().match(/[aeiou]$/) ? 'female' : 'male', // heurística simple
+      timeStr:  lcFormatTime(b.time, fmt)
     });
-  }
+  });
 
-  // 2. Comentarios de relleno distribuidos uniformemente
-  const fillerTotal = Math.round(cfg.fillerPerMin * cfg.duration);
+  // 2. Comentarios de relleno (solo si algún checkbox de relleno está activo)
   const pools = [];
   if (cfg.filler)      pools.push({ pool: LC_FILLER,      type: 'filler'      });
   if (cfg.testimonial) pools.push({ pool: LC_TESTIMONIAL, type: 'testimonial' });
   if (cfg.faq)         pools.push({ pool: LC_FAQ,         type: 'faq'         });
   if (cfg.interest)    pools.push({ pool: LC_INTEREST,    type: 'interest'    });
 
-  if (pools.length && fillerTotal > 0) {
-    const usedTexts = new Set(comments.map(c => c.text));
+  if (pools.length > 0) {
+    const fillerTotal = Math.round(cfg.fillerPerMin * cfg.duration);
+    const recentNames = comments.map(c => c.username.split(' ')[0]);
+    const nameCounts  = {};
+    comments.forEach(c => { nameCounts[c.username] = (nameCounts[c.username] || 0) + 1; });
+
     for (let i = 0; i < fillerTotal; i++) {
-      const sec   = Math.floor((totalSec / (fillerTotal + 1)) * (i + 1));
-      const src   = pools[i % pools.length];
-      let   text  = lcRand(src.pool);
-      // Reemplazar [CITY]
-      text = text.replace('[CITY]', lcRand(cities));
-      comments.push({ sec, type: src.type, text });
-      usedTexts.add(text);
+      const sec    = Math.floor((totalSec / (fillerTotal + 1)) * (i + 1));
+      const src    = pools[i % pools.length];
+      let   text   = lcRand(src.pool).replace('[CITY]', lcRand(cities));
+      const gender = Math.random() < 0.6 ? 'female' : 'male';
+      const recentWin = recentNames.slice(-3);
+      let   name;
+
+      if (keepNames && _lcNamesSeeds['f_' + i]) {
+        name = _lcNamesSeeds['f_' + i];
+      } else {
+        const picked = lcPickName(country, gender, recentWin);
+        name = picked.display;
+        _lcNamesSeeds['f_' + i] = name;
+      }
+      if ((nameCounts[name] || 0) >= 3) {
+        const alt = lcPickName(country, gender, recentWin);
+        name = alt.display;
+        _lcNamesSeeds['f_' + i] = name;
+      }
+      nameCounts[name] = (nameCounts[name] || 0) + 1;
+      recentNames.push(name.split(' ')[0]);
+
+      comments.push({ sec, type: src.type, text, username: name, gender, timeStr: lcFormatTime(sec, fmt) });
     }
   }
 
   // 3. Ordenar por tiempo
   comments.sort((a, b) => a.sec - b.sec);
-
-  // 4. Asignar nombres
-  const recentNames = [];
-  const nameCounts  = {};
-  const newMap      = {};
-
-  comments.forEach((c, i) => {
-    const gender   = Math.random() < 0.6 ? 'female' : 'male';
-    const recentWin = recentNames.slice(-3).map(n => n.split(' ')[0]);
-    let name;
-
-    if (keepNames && _lcNamesSeeds[i]) {
-      name = _lcNamesSeeds[i];
-    } else {
-      const picked = lcPickName(country, gender, recentWin);
-      name = picked.display;
-      _lcNamesSeeds[i] = name;
-    }
-
-    // Limitar a máx 3 apariciones
-    if ((nameCounts[name] || 0) >= 3) {
-      const alt = lcPickName(country, gender, recentWin);
-      name = alt.display;
-      _lcNamesSeeds[i] = name;
-    }
-    nameCounts[name] = (nameCounts[name] || 0) + 1;
-    recentNames.push(name.split(' ')[0]);
-    newMap[name] = _lcAvatarMap[name] || null;
-
-    c.username = name;
-    c.gender   = gender;
-    c.timeStr  = lcFormatTime(c.sec, fmt);
-  });
-
   return comments;
 }
 
@@ -1997,24 +1990,25 @@ async function lcUpdateStatus() {
     if (!r.ok) throw new Error('backend unavailable');
     const s = await r.json();
     if (nanoEl) {
-      nanoEl.className = 'lc-chip ' + (s.nanobanana ? 'lc-chip-ok' : 'lc-chip-off');
-      nanoEl.textContent = s.nanobanana ? '🟢 Nanobanana: conectado' : '🔴 Nanobanana: no configurado';
+      nanoEl.className   = 'lc-chip ' + (s.nanobanana ? 'lc-chip-ok' : 'lc-chip-warn');
+      nanoEl.textContent = s.nanobanana ? '🟢 Gemini Imagen: activo' : '🟡 Sin Gemini key: modo DiceBear';
     }
     if (sbEl) {
-      sbEl.className = 'lc-chip ' + (s.supabase ? 'lc-chip-ok' : 'lc-chip-warn');
-      sbEl.textContent = s.supabase ? '🟢 Supabase: conectado' : '🟡 Sin Supabase: modo DiceBear';
+      sbEl.className   = 'lc-chip ' + (s.supabase ? 'lc-chip-ok' : 'lc-chip-warn');
+      sbEl.textContent = s.supabase ? '🟢 Supabase Storage: activo' : '🟡 Sin Supabase: avatares temporales';
     }
   } catch (_) {
-    if (nanoEl) { nanoEl.className = 'lc-chip lc-chip-warn'; nanoEl.textContent = '🟡 Modo local no activo'; }
+    if (nanoEl) { nanoEl.className = 'lc-chip lc-chip-warn'; nanoEl.textContent = '🟡 Servidor local: no activo'; }
     if (sbEl)   { sbEl.className   = 'lc-chip lc-chip-warn'; sbEl.textContent   = '🟡 Avatares: DiceBear (gratis)'; }
   }
 }
 
 // ── Enviar configuración al servidor ─────────────────────
+// La Gemini key se usa tanto para IA de texto como para Gemini Imagen 3 (avatares)
 function lcSendConfigToServer() {
-  const nano   = localStorage.getItem('fakelive_nanobanana_key') || '';
-  const sbUrl  = localStorage.getItem('fakelive_supabase_url')   || '';
-  const sbAnon = localStorage.getItem('fakelive_supabase_anon')  || '';
+  const nano   = localStorage.getItem('fakelive_gemini_key')       || ''; // misma clave que Gemini
+  const sbUrl  = localStorage.getItem('fakelive_supabase_url')     || '';
+  const sbAnon = localStorage.getItem('fakelive_supabase_anon')    || '';
   const sbSvc  = localStorage.getItem('fakelive_supabase_service') || '';
   if (!nano && !sbUrl) return;
   fetch('/api/config', {
@@ -2208,26 +2202,23 @@ async function lcTestSupabase() {
   }
 }
 
-// ── Cargar/guardar API keys de LiveCake ───────────────────
+// ── Cargar/guardar API keys de LiveCake (solo Supabase Storage) ──
+// La Gemini key se gestiona en sbLoadStreamSettings / sbSaveStreamSettings
 function lcLoadApiKeys() {
-  const el1 = document.getElementById('nanobanana-key-input');
   const el2 = document.getElementById('lc-supabase-url');
   const el3 = document.getElementById('lc-supabase-anon');
   const el4 = document.getElementById('lc-supabase-service');
-  if (el1) el1.value = localStorage.getItem('fakelive_nanobanana_key') || '';
-  if (el2) el2.value = localStorage.getItem('fakelive_supabase_url')   || '';
-  if (el3) el3.value = localStorage.getItem('fakelive_supabase_anon')  || '';
-  if (el4) el4.value = localStorage.getItem('fakelive_supabase_service') || '';
+  if (el2) el2.value = localStorage.getItem('fakelive_supabase_url')      || '';
+  if (el3) el3.value = localStorage.getItem('fakelive_supabase_anon')     || '';
+  if (el4) el4.value = localStorage.getItem('fakelive_supabase_service')  || '';
 }
 
 function lcSaveApiKeys() {
-  const nano = document.getElementById('nanobanana-key-input')?.value?.trim();
   const url  = document.getElementById('lc-supabase-url')?.value?.trim();
   const anon = document.getElementById('lc-supabase-anon')?.value?.trim();
   const svc  = document.getElementById('lc-supabase-service')?.value?.trim();
-  if (nano !== undefined) localStorage.setItem('fakelive_nanobanana_key',   nano);
-  if (url  !== undefined) localStorage.setItem('fakelive_supabase_url',    url);
-  if (anon !== undefined) localStorage.setItem('fakelive_supabase_anon',   anon);
+  if (url  !== undefined) localStorage.setItem('fakelive_supabase_url',     url);
+  if (anon !== undefined) localStorage.setItem('fakelive_supabase_anon',    anon);
   if (svc  !== undefined) localStorage.setItem('fakelive_supabase_service', svc);
   lcSendConfigToServer();
 }
@@ -2236,6 +2227,7 @@ function lcSaveApiKeys() {
 function lcOnEnter() {
   lcLoadConfig();
   lcAutoDetectDuration();
+  lcSendConfigToServer(); // envía la Gemini key (y Supabase si está) al servidor
   lcRenderPreview();
   lcUpdateStatus();
 }
@@ -2269,20 +2261,15 @@ function lcBindAll() {
   document.getElementById('btn-lc-copy')?.addEventListener('click',     lcCopyTSV);
   document.getElementById('btn-test-supabase-lc')?.addEventListener('click', lcTestSupabase);
 
-  // Nanobanana key show/hide
-  document.getElementById('btn-toggle-nanobanana-key')?.addEventListener('click', () => {
-    const inp = document.getElementById('nanobanana-key-input');
-    const eye = document.getElementById('nanobanana-key-eye');
-    if (!inp) return;
-    inp.type = inp.type === 'password' ? 'text' : 'password';
-    if (eye) eye.textContent = inp.type === 'password' ? 'visibility' : 'visibility_off';
-  });
-
-  // Guardar API keys al cambiar
-  ['nanobanana-key-input','lc-supabase-url','lc-supabase-anon','lc-supabase-service'].forEach(id => {
+  // Guardar Supabase keys al cambiar (Gemini key se gestiona en sbSaveStreamSettings)
+  ['lc-supabase-url','lc-supabase-anon','lc-supabase-service'].forEach(id => {
     document.getElementById(id)?.addEventListener('change', lcSaveApiKeys);
     document.getElementById(id)?.addEventListener('blur',   lcSaveApiKeys);
   });
+
+  // Cuando se guarda la Gemini key, re-enviar config al servidor (para avatares)
+  document.getElementById('gemini-key-input')?.addEventListener('change', lcSendConfigToServer);
+  document.getElementById('gemini-key-input')?.addEventListener('blur',   lcSendConfigToServer);
 }
 
 document.addEventListener('DOMContentLoaded', () => {

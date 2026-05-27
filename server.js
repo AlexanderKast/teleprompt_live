@@ -27,21 +27,21 @@ let appConfig      = {};
 let sbStorage      = null;
 const avatarCache  = new Map();
 
-// Mapeo país → etnicidad para Nanobanana
+// Mapeo país → descripción étnica para el prompt de Gemini Imagen
 const ETHNICITY_MAP = {
-  'Colombia':           'hispanic-latina',
-  'Venezuela':          'hispanic-latina',
-  'Ecuador':            'hispanic-latina',
-  'Perú':               'hispanic-latina',
-  'Bolivia':            'hispanic-latina',
-  'México':             'hispanic-mexican',
-  'Argentina':          'hispanic-southern',
-  'Uruguay':            'hispanic-southern',
-  'Chile':              'hispanic-southern',
-  'España':             'european-spanish',
-  'República Dominicana': 'afro-hispanic',
-  'Cuba':               'afro-hispanic',
-  'Puerto Rico':        'afro-hispanic'
+  'Colombia':              'Colombian Latin American',
+  'Venezuela':             'Venezuelan Latin American',
+  'Ecuador':               'Ecuadorian Latin American',
+  'Perú':                  'Peruvian Latin American',
+  'Bolivia':               'Bolivian Latin American',
+  'México':                'Mexican Latin American',
+  'Argentina':             'Argentine Latin American',
+  'Uruguay':               'Uruguayan Latin American',
+  'Chile':                 'Chilean Latin American',
+  'España':                'Spanish European',
+  'República Dominicana':  'Dominican Caribbean',
+  'Cuba':                  'Cuban Caribbean',
+  'Puerto Rico':           'Puerto Rican Caribbean'
 };
 
 // ── POST /api/config — recibe claves del frontend ─────────────
@@ -80,19 +80,33 @@ app.post('/api/generate-avatar', async (req, res) => {
     return res.json({ url: avatarCache.get(username), username, cached: true });
   }
 
-  const ethnicity = ETHNICITY_MAP[country] || 'hispanic-latina';
-  const age       = Math.floor(Math.random() * 24) + 22; // 22–45
-  let imageBuffer = null;
+  const ethnicDesc = ETHNICITY_MAP[country] || 'Latin American';
+  const age        = Math.floor(Math.random() * 24) + 22; // 22–45
+  const genderWord = gender === 'male' ? 'man' : 'woman';
+  let imageBuffer  = null;
 
-  // Intentar Nanobanana
+  // Intentar Gemini Imagen 3 (misma clave que la IA de texto)
   if (appConfig.nanobananaKey) {
     try {
+      const prompt = `Professional headshot portrait photo, ${genderWord}, approximately ${age} years old, ${ethnicDesc} appearance, soft neutral background, natural lighting, realistic photography, LinkedIn style profile`;
       const r = await fetch(
-        `https://api.nanobanana.io/v1/avatar/generate?style=realistic&gender=${gender}&age=${age}&ethnicity=${ethnicity}`,
-        { headers: { Authorization: `Bearer ${appConfig.nanobananaKey}` }, signal: AbortSignal.timeout(8000) }
+        `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${appConfig.nanobananaKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            instances:  [{ prompt }],
+            parameters: { sampleCount: 1, aspectRatio: '1:1', personGeneration: 'allow_all' }
+          }),
+          signal: AbortSignal.timeout(25000)
+        }
       );
-      if (r.ok) imageBuffer = Buffer.from(await r.arrayBuffer());
-    } catch (_) { /* fallback a DiceBear */ }
+      if (r.ok) {
+        const data = await r.json();
+        const b64  = data?.predictions?.[0]?.bytesBase64Encoded;
+        if (b64) imageBuffer = Buffer.from(b64, 'base64');
+      }
+    } catch (e) { console.warn('[Avatar] Gemini Imagen falló:', e.message); /* fallback a DiceBear */ }
   }
 
   // Fallback: DiceBear personas

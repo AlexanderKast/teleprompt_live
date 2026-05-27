@@ -654,8 +654,8 @@
             <label class="sb-label">Gemini API Key</label>
             <input id="gemini-key-input" type="password" placeholder="AIza..." autocomplete="off" class="sb-input"/>
             <p style="font-size:10px;color:rgba(228,225,240,0.4);margin-top:4px;">
-              Guardado localmente en tu dispositivo.
-              <a href="https://aistudio.google.com" target="_blank" style="color:#ffb3b5;text-decoration:underline;">Obtén tu clave gratuita en aistudio.google.com →</a>
+              Usada para IA de texto <strong style="color:rgba(228,225,240,0.6);">y</strong> generación de avatares (Gemini Imagen 3). Guardada solo localmente.
+              <a href="https://aistudio.google.com" target="_blank" style="color:#ffb3b5;text-decoration:underline;">Obtén tu clave gratuita →</a>
             </p>
           </div>
           <button id="btn-test-gemini" class="sb-btn-secondary" style="width:100%;">
@@ -664,21 +664,6 @@
           <div id="gemini-test-result" style="display:none;margin-top:10px;font-size:12px;padding:10px 12px;border-radius:8px;"></div>
 
           <div style="border-top:1px solid rgba(255,255,255,0.07);margin:14px 0 10px;"></div>
-
-          <!-- Nanobanana API Key -->
-          <div class="sb-field-group">
-            <label class="sb-label">🍌 Nanobanana API Key (avatares IA)</label>
-            <div style="position:relative;">
-              <input id="nanobanana-key-input" type="password" placeholder="nb_..." autocomplete="off" class="sb-input" style="padding-right:38px;"/>
-              <button id="btn-toggle-nanobanana-key" type="button" title="Mostrar/ocultar"
-                style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:rgba(228,225,240,0.4);padding:2px;">
-                <span id="nanobanana-key-eye" class="material-symbols-outlined" style="font-size:18px;">visibility</span>
-              </button>
-            </div>
-            <p style="font-size:10px;color:rgba(228,225,240,0.4);margin-top:4px;">
-              <a href="https://nanobanana.io" target="_blank" style="color:#ffb3b5;text-decoration:underline;">Obtén tu clave en nanobanana.io →</a>
-            </p>
-          </div>
 
           <!-- Supabase para LiveCake Storage -->
           <div class="sb-field-group">
@@ -832,11 +817,11 @@ EJEMPLO:
           </button>
           <div id="acc5" class="sb-acc-body" style="display:none;">
             <div class="sb-help-text">
-              <p><strong>Paso 1 — Configura las claves</strong><br/>Ve a Stream Settings → API Keys y agrega tu Nanobanana API Key (para fotos de perfil realistas) y las claves de Supabase (para almacenar las imágenes). Sin claves, la app usa DiceBear gratis.</p>
-              <p><strong>Paso 2 — Configura el export</strong><br/>En LiveCake Export selecciona el país, tipo de comentarios y comentarios de relleno por minuto. La duración se auto-detecta desde tu guion.</p>
-              <p><strong>Paso 3 — Genera avatares</strong><br/>Haz clic en "🎨 Generar avatares". La app crea fotos de perfil para cada usuario y las sube a Supabase. Verás el progreso en tiempo real.</p>
-              <p><strong>Paso 4 — Descarga el CSV</strong><br/>Haz clic en "⬇️ Descargar CSV para LiveCake". El archivo tiene 4 columnas: <code>Title</code> (nombre), <code>Content</code> (comentario), <code>Time</code> (tiempo) e <code>Image</code> (URL del avatar). Súbelo directo a LiveCake/Pancake.</p>
-              <p><strong>Modo sin imagen (gratis)</strong><br/>Si no configuras Nanobanana ni Supabase, la app genera avatares de DiceBear sin costo ni registro. Los URLs funcionan en LiveCake igual.</p>
+              <p><strong>Cómo funciona</strong><br/>Lee automáticamente todos los bloques <code>[COMENTARIO]</code> de tu guion y los prepara para LiveCake/Pancake con avatares reales. También puedes añadir comentarios de relleno activando los checkboxes.</p>
+              <p><strong>Paso 1 — Agrega tu Gemini API Key</strong><br/>Ve a Stream Settings → API Keys y asegúrate de tener tu Gemini key. <strong>La misma clave se usa para generar avatares realistas con Gemini Imagen 3.</strong> Sin key, usa DiceBear gratis.</p>
+              <p><strong>Paso 2 — Genera avatares</strong><br/>En LiveCake Export haz clic en "🎨 Generar avatares". Se crea una foto de perfil realista para cada usuario del guion. Verás el progreso en tiempo real.</p>
+              <p><strong>Paso 3 — Descarga el CSV</strong><br/>Haz clic en "⬇️ Descargar CSV para LiveCake". Tiene 4 columnas: <code>Title</code> (username), <code>Content</code> (comentario), <code>Time</code> (tiempo) e <code>Image</code> (avatar URL). Súbelo a LiveCake/Pancake.</p>
+              <p><strong>Modo gratis (sin key)</strong><br/>Si no configuras Gemini key, la app genera avatares de DiceBear automáticamente. Para persistencia entre sesiones, configura Supabase Storage en las mismas opciones.</p>
             </div>
           </div>
         </div>
@@ -964,8 +949,8 @@ EJEMPLO:
 
           <!-- Status chips -->
           <div class="lc-status-chips" id="lc-status-chips">
-            <span class="lc-chip" id="lc-chip-nano">⚙️ Nanobanana: cargando...</span>
-            <span class="lc-chip" id="lc-chip-sb">⚙️ Supabase: cargando...</span>
+            <span class="lc-chip" id="lc-chip-nano">⚙️ Gemini Imagen: cargando...</span>
+            <span class="lc-chip" id="lc-chip-sb">⚙️ Supabase Storage: cargando...</span>
           </div>
 
           <!-- Step 1: Avatares -->
