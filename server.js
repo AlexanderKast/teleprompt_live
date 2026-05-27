@@ -123,12 +123,12 @@ app.post('/api/generate-avatar', async (req, res) => {
     }
   }
 
-  // Redimensionar a 200×200 JPEG calidad 70
+  // Redimensionar a 100×100 JPEG calidad 60 (tamaño óptimo para LiveCake)
   let jpegBuffer;
   try {
-    jpegBuffer = await sharp(imageBuffer, { density: 150 })
-      .resize(200, 200, { fit: 'cover', position: 'centre' })
-      .jpeg({ quality: 70 })
+    jpegBuffer = await sharp(imageBuffer, { density: 72 })
+      .resize(100, 100, { fit: 'cover', position: 'centre' })
+      .jpeg({ quality: 60 })
       .toBuffer();
   } catch (e) {
     return res.status(500).json({ error: 'Error procesando imagen: ' + e.message });

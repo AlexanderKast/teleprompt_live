@@ -1809,8 +1809,9 @@ function lcFormatTime(totalSec, format) {
 
 function lcGetConfig() {
   return {
-    country:    document.getElementById('lc-country')?.value     || 'Colombia',
-    timeFormat: document.getElementById('lc-time-format')?.value || 'hace_seg'
+    country:      document.getElementById('lc-country')?.value        || 'Colombia',
+    timeFormat:   document.getElementById('lc-time-format')?.value    || 'hace_seg',
+    fillerPerMin: parseInt(document.getElementById('lc-filler-per-min')?.value || '7', 10)
   };
 }
 
@@ -1821,47 +1822,99 @@ function lcSaveConfig() {
 function lcLoadConfig() {
   let cfg = {};
   try { cfg = JSON.parse(localStorage.getItem(LS_LC) || '{}'); } catch (_) {}
-  if (cfg.country)    { const el = document.getElementById('lc-country');     if (el) el.value = cfg.country; }
-  if (cfg.timeFormat) { const el = document.getElementById('lc-time-format'); if (el) el.value = cfg.timeFormat; }
+  if (cfg.country)    { const el = document.getElementById('lc-country');         if (el) el.value = cfg.country; }
+  if (cfg.timeFormat) { const el = document.getElementById('lc-time-format');     if (el) el.value = cfg.timeFormat; }
+  if (cfg.fillerPerMin !== undefined) {
+    const el = document.getElementById('lc-filler-per-min');
+    if (el) { el.value = cfg.fillerPerMin; lcUpdateFillerLabel(cfg.fillerPerMin); }
+  }
 }
 
-// ── Leer comentarios SOLO del guion (fuente única) ────────
-// Lee todos los bloques [COMENTARIO] del textarea y los devuelve
-// con su username y mensaje originales, sin generación aleatoria.
-function lcReadScriptComments() {
-  const cfg = lcGetConfig();
-  const fmt = cfg.timeFormat;
-  const ta  = document.getElementById('script-textarea');
-  if (!ta || !ta.value.trim()) return [];
+// Actualiza la etiqueta del slider de relleno
+function lcUpdateFillerLabel(val) {
+  const lbl = document.getElementById('lc-filler-label');
+  if (lbl) lbl.textContent = val + ' / min';
+}
 
-  // Usa window.parseScript (override en SUPERPOWERS que soporta todos los tipos)
-  const allBlocks = window.parseScript(ta.value);
-  const result    = [];
+// ── Construir lista completa: scripted + filler ───────────
+// • Scripted: [COMENTARIO] del guion, username y tiempo EXACTOS
+// • Filler:   comentarios de relleno distribuidos uniformemente
+//             con nombres aleatorios (distintos a los del guion)
+function lcBuildCommentList() {
+  const cfg  = lcGetConfig();
+  const fmt  = cfg.timeFormat;
+  const rate = Math.max(1, cfg.fillerPerMin);
+  const ta   = document.getElementById('script-textarea');
+  const text = ta?.value?.trim() || '';
 
-  allBlocks.forEach(b => {
-    if (b.type !== 'COMENTARIO') return;
-    // username = lo que está antes del primer ':'
-    const username = (b.username || '').trim() || 'Usuario';
-    // message = lo que está después del ':'
-    const text     = (b.message  || b.content || '').trim();
-    // Heurística de género por terminación del nombre
-    const gender   = /[aeiouáéíóúü]$/i.test(username) ? 'female' : 'male';
-    result.push({
+  // 1. Parsear todo el guion
+  const allBlocks = text ? window.parseScript(text) : [];
+
+  // 2. Extraer [COMENTARIO] reales — posición y username exactos
+  const scripted = allBlocks
+    .filter(b => b.type === 'COMENTARIO')
+    .map(b => ({
       sec:      b.time,
       timeStr:  lcFormatTime(b.time, fmt),
       type:     'scripted',
-      username,
-      text,
-      gender
-    });
-  });
+      username: (b.username || '').trim() || 'Usuario',
+      text:     (b.message  || b.content  || '').trim(),
+      gender:   /[aeiouáéíóúü]$/i.test(b.username || '') ? 'female' : 'male'
+    }));
 
-  return result; // ya ordenados por tiempo (el guion está cronológico)
+  // 3. Duración total (segundos)
+  const maxSec      = allBlocks.length ? Math.max(...allBlocks.map(b => b.time)) : 360;
+  const durationMin = maxSec / 60;
+
+  // 4. Nombres ya usados por el guion (filler no puede repetirlos)
+  const scriptedNames = new Set(scripted.map(c => c.username));
+
+  // 5. Generar filler distribuido entre los reales
+  const country     = cfg.country;
+  const cities      = LC_CITIES[country] || LC_CITIES.Otro;
+  const fillerPools = [
+    ...LC_FILLER.map(t      => ({ text: t, type: 'filler'      })),
+    ...LC_TESTIMONIAL.map(t => ({ text: t, type: 'testimonial' })),
+    ...LC_FAQ.map(t         => ({ text: t, type: 'faq'         })),
+    ...LC_INTEREST.map(t    => ({ text: t, type: 'interest'    }))
+  ];
+  const totalFiller = Math.round(rate * durationMin);
+  const nameCount   = {};
+  const recentFirst = [];
+  const fillerList  = [];
+
+  for (let i = 0; i < totalFiller; i++) {
+    const sec    = Math.floor((maxSec / (totalFiller + 1)) * (i + 1));
+    const src    = lcRand(fillerPools);
+    const ftext  = src.text.replace('[CITY]', lcRand(cities));
+    const gender = Math.random() < 0.6 ? 'female' : 'male';
+    const recent = recentFirst.slice(-4);
+    let   name;
+    let   tries  = 0;
+
+    // Elegir nombre único: no repetir scripted, no repetir recientes, máx 2 veces
+    do {
+      name = lcPickName(country, gender, recent).display;
+      tries++;
+    } while (tries < 30 && (
+      scriptedNames.has(name) ||
+      (nameCount[name] || 0) >= 2 ||
+      recent.includes(name.split(' ')[0])
+    ));
+
+    nameCount[name] = (nameCount[name] || 0) + 1;
+    recentFirst.push(name.split(' ')[0]);
+
+    fillerList.push({ sec, timeStr: lcFormatTime(sec, fmt), type: src.type, username: name, text: ftext, gender });
+  }
+
+  // 6. Unir y ordenar cronológicamente
+  return [...scripted, ...fillerList].sort((a, b) => a.sec - b.sec);
 }
 
 // ── Renderizar preview ───────────────────────────────────
 function lcRenderPreview() {
-  _lcComments = lcReadScriptComments();
+  _lcComments = lcBuildCommentList();
 
   const container = document.getElementById('lc-preview-table');
   const countEl   = document.getElementById('lc-preview-count');
@@ -1873,7 +1926,10 @@ function lcRenderPreview() {
   const total = _lcComments.length;
   if (countEl) countEl.textContent = `${total} comentario${total !== 1 ? 's' : ''}`;
 
-  if (total === 0) {
+  const scriptedCount = _lcComments.filter(c => c.type === 'scripted').length;
+  const fillerCount   = total - scriptedCount;
+
+  if (scriptedCount === 0) {
     container.innerHTML = '<p style="color:rgba(228,225,240,0.35);font-size:12px;text-align:center;padding:16px 0;">No se encontraron bloques [COMENTARIO] en el guion.<br>Escribe tu guion en la pestaña <strong>Prompter</strong> primero.</p>';
     if (statsEl) statsEl.textContent = '';
     if (warnEl)  warnEl.style.display = 'none';
@@ -1881,29 +1937,31 @@ function lcRenderPreview() {
     return;
   }
 
-  // Tabla (máx 15 filas)
+  // Tabla (máx 15 filas preview)
   const preview = _lcComments.slice(0, 15);
   let html = '<table><thead><tr><th>Avatar</th><th>Usuario</th><th>Comentario</th><th>Tiempo</th></tr></thead><tbody>';
   preview.forEach(c => {
     const text      = c.text.length > 55 ? c.text.slice(0, 54) + '…' : c.text;
     const avatarUrl = _lcAvatarMap[c.username];
+    const isReal    = c.type === 'scripted';
     const imgHtml   = avatarUrl
       ? `<div class="lc-avatar-circle"><img src="${avatarUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;"/></div>`
-      : `<div class="lc-avatar-circle" style="background:rgba(255,179,181,0.15);display:flex;align-items:center;justify-content:center;font-size:11px;color:rgba(228,225,240,0.3);">?</div>`;
+      : `<div class="lc-avatar-circle" style="background:rgba(255,179,181,0.12);display:flex;align-items:center;justify-content:center;font-size:10px;color:rgba(228,225,240,0.3);">${isReal?'★':'·'}</div>`;
+    const nameColor = isReal ? '#ffb3b5' : 'rgba(228,225,240,0.7)';
     html += `<tr>
       <td>${imgHtml}</td>
-      <td style="white-space:nowrap;font-weight:600;color:#ffb3b5;">${escHtml(c.username)}</td>
-      <td style="color:rgba(228,225,240,0.65);">${escHtml(text)}</td>
-      <td style="white-space:nowrap;color:rgba(228,225,240,0.4);font-family:'JetBrains Mono',monospace;font-size:11px;">${escHtml(c.timeStr)}</td>
+      <td style="white-space:nowrap;font-weight:${isReal?'700':'400'};color:${nameColor};">${escHtml(c.username)}</td>
+      <td style="color:rgba(228,225,240,0.6);">${escHtml(text)}</td>
+      <td style="white-space:nowrap;color:rgba(228,225,240,0.38);font-family:'JetBrains Mono',monospace;font-size:11px;">${escHtml(c.timeStr)}</td>
     </tr>`;
   });
   html += '</tbody></table>';
   if (total > 15) html += `<div class="lc-preview-more">... y ${total - 15} comentarios más</div>`;
   container.innerHTML = html;
 
-  if (statsEl) statsEl.textContent = `📝 ${total} comentario${total !== 1 ? 's' : ''} del guion`;
-  if (warnEl) { warnEl.style.display = total < 5  ? '' : 'none'; warnEl.textContent  = '⚠️ Pocos comentarios. Agrega más bloques [COMENTARIO] a tu guion.'; }
-  if (okEl)   { okEl.style.display   = total >= 5 ? '' : 'none'; okEl.textContent    = `✅ ${total} comentarios listos para exportar.`; }
+  if (statsEl) statsEl.textContent = `★ ${scriptedCount} del guion (IA) · 💬 ${fillerCount} relleno (gratis) · total: ${total}`;
+  if (warnEl) { warnEl.style.display = scriptedCount === 0 ? '' : 'none'; warnEl.textContent = '⚠️ No hay [COMENTARIO] en el guion.'; }
+  if (okEl)   { okEl.style.display   = total >= 20 ? '' : 'none'; okEl.textContent   = `✅ ${total} comentarios listos para exportar a LiveCake.`; }
 
   lcSaveConfig();
 }
@@ -1946,6 +2004,8 @@ function lcSendConfigToServer() {
 }
 
 // ── Generar avatares ──────────────────────────────────────
+// • Scripted [★]: llama a /api/generate-avatar (Gemini Imagen → DiceBear fallback)
+// • Filler   [·]: DiceBear URL directo, instantáneo, costo CERO
 async function lcGenerateAvatars() {
   const btn      = document.getElementById('btn-lc-avatars');
   const progWrap = document.getElementById('lc-avatar-progress');
@@ -1953,60 +2013,83 @@ async function lcGenerateAvatars() {
   const progLbl  = document.getElementById('lc-progress-label');
   const doneEl   = document.getElementById('lc-avatar-done');
 
-  if (!_lcComments.length) { showToast('Primero configura el export', 'error'); return; }
+  if (!_lcComments.length) {
+    lcRenderPreview();
+    if (!_lcComments.length) { showToast('Escribe tu guion en el Prompter primero', 'error'); return; }
+  }
 
-  btn.disabled = true;
+  btn.disabled           = true;
   progWrap.style.display = '';
   doneEl.style.display   = 'none';
 
-  const cfg     = lcGetConfig();
-  const unique  = [...new Set(_lcComments.map(c => c.username))];
-  const total   = unique.length;
-  let done      = 0;
+  const cfg    = lcGetConfig();
+  const unique = [...new Set(_lcComments.map(c => c.username))];
+  const total  = unique.length;
+  let   done   = 0;
+
+  // Función de actualización de progreso
+  const tick = () => {
+    done++;
+    const pct = Math.round((done / total) * 100);
+    if (progFill) progFill.style.width = pct + '%';
+    if (progLbl)  progLbl.textContent  = `Generando... ${done}/${total}`;
+    lcRenderPreviewAvatars();
+  };
 
   const doOne = async (username) => {
-    // Si ya tiene avatar, saltar
-    if (_lcAvatarMap[username]) { done++; return; }
+    if (_lcAvatarMap[username]) { done++; return; }   // ya tiene avatar
 
-    const c      = _lcComments.find(x => x.username === username);
-    const gender = c?.gender || 'female';
+    const c          = _lcComments.find(x => x.username === username);
+    const isScripted = c?.type === 'scripted';
+    const gender     = c?.gender || 'female';
 
+    if (!isScripted) {
+      // ── Filler: DiceBear instantáneo (sin llamada al servidor) ──
+      _lcAvatarMap[username] =
+        `https://api.dicebear.com/9.x/personas/svg?seed=${encodeURIComponent(username)}&size=100`;
+      tick();
+      return;
+    }
+
+    // ── Scripted: Gemini Imagen → DiceBear fallback ──
     try {
       const r = await fetch('/api/generate-avatar', {
-        method: 'POST',
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, country: cfg.country, gender })
+        body:    JSON.stringify({ username, country: cfg.country, gender })
       });
       if (r.ok) {
         const d = await r.json();
         _lcAvatarMap[username] = d.url;
-      }
+      } else { throw new Error('server error'); }
     } catch (_) {
-      // Fallback directo a DiceBear (funciona sin backend)
-      _lcAvatarMap[username] = `https://api.dicebear.com/7.x/personas/svg?seed=${encodeURIComponent(username)}`;
+      _lcAvatarMap[username] =
+        `https://api.dicebear.com/9.x/personas/svg?seed=${encodeURIComponent(username)}&size=100`;
     }
-
-    done++;
-    const pct = Math.round((done / total) * 100);
-    if (progFill) progFill.style.width = pct + '%';
-    if (progLbl)  progLbl.textContent  = `Generando... ${done} de ${total}`;
-
-    // Actualizar preview en tiempo real
-    lcRenderPreviewAvatars();
+    tick();
   };
 
-  // Máx 3 concurrentes
+  // Filler primero (instantáneo), luego scripted en lotes de 3 concurrentes
+  const fillerNames   = unique.filter(u => _lcComments.find(c => c.username === u)?.type !== 'scripted');
+  const scriptedNames = unique.filter(u => _lcComments.find(c => c.username === u)?.type === 'scripted');
+
+  // Filler: todos a la vez (solo asignación de URL, sin fetch)
+  await Promise.all(fillerNames.map(doOne));
+
+  // Scripted: máx 3 concurrentes (llamadas a API)
   const chunks = [];
-  for (let i = 0; i < unique.length; i += 3) chunks.push(unique.slice(i, i + 3));
+  for (let i = 0; i < scriptedNames.length; i += 3) chunks.push(scriptedNames.slice(i, i + 3));
   for (const chunk of chunks) await Promise.all(chunk.map(doOne));
 
   progWrap.style.display = 'none';
   doneEl.style.display   = '';
-  doneEl.textContent     = `✅ ${total} avatares listos`;
+  const aiCount    = scriptedNames.length;
+  const freeCount  = fillerNames.length;
+  doneEl.textContent = `✅ ${total} avatares listos (${aiCount} IA · ${freeCount} gratis)`;
   btn.disabled = false;
 
   lcShowStep2();
-  showToast(`${total} avatares generados ✓`, 'success');
+  showToast(`${total} avatares generados (${aiCount} Gemini · ${freeCount} DiceBear) ✓`, 'success');
 }
 
 // Actualiza solo las imágenes del preview sin regenerar todo
@@ -2170,11 +2253,17 @@ sbNavTo = function (section) {
 // ── Bindings ─────────────────────────────────────────────
 function lcBindAll() {
   // Config changes → re-render preview
-  ['lc-country','lc-time-format'].forEach(id => {
+  ['lc-country', 'lc-time-format'].forEach(id => {
     document.getElementById(id)?.addEventListener('change', lcRenderPreview);
   });
 
-  // Botón refrescar (re-lee el guion)
+  // Slider de densidad de filler
+  document.getElementById('lc-filler-per-min')?.addEventListener('input', e => {
+    lcUpdateFillerLabel(e.target.value);
+    lcRenderPreview();
+  });
+
+  // Botón refrescar (re-lee el guion y regenera)
   document.getElementById('btn-lc-regenerate')?.addEventListener('click', lcRenderPreview);
 
   document.getElementById('btn-lc-avatars')?.addEventListener('click',  lcGenerateAvatars);

@@ -849,10 +849,10 @@ EJEMPLO:
           </div>
 
           <p style="font-size:12px;color:rgba(228,225,240,0.5);margin-bottom:14px;line-height:1.6;">
-            Lee automáticamente todos los bloques <code style="background:rgba(255,179,181,0.1);padding:1px 5px;border-radius:4px;color:#ffb3b5;">[COMENTARIO]</code> de tu guion en el Prompter y los exporta con sus usuarios y mensajes originales.
+            Los <code style="background:rgba(255,179,181,0.1);padding:1px 5px;border-radius:4px;color:#ffb3b5;">[COMENTARIO]</code> del guion se exportan en su posición exacta con avatar IA. El relleno se distribuye automáticamente con avatares gratis.
           </p>
 
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
             <div class="sb-field-group" style="margin:0;">
               <label class="sb-label">País del live</label>
               <div style="position:relative;">
@@ -886,8 +886,20 @@ EJEMPLO:
             </div>
           </div>
 
-          <button id="btn-lc-regenerate" class="sb-btn-secondary" style="width:100%;margin-top:14px;">
-            🔄 Leer guion
+          <div class="sb-field-group">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <label class="sb-label" style="margin:0;">💬 Densidad de relleno</label>
+              <span id="lc-filler-label" style="font-size:12px;font-weight:700;color:#eac32b;font-family:'JetBrains Mono',monospace;">7 / min</span>
+            </div>
+            <input id="lc-filler-per-min" type="range" min="5" max="10" value="7" step="1" class="sb-slider" style="margin-top:6px;"/>
+            <div style="display:flex;justify-content:space-between;margin-top:2px;">
+              <span style="font-size:10px;color:rgba(228,225,240,0.3);">5/min – tranquilo</span>
+              <span style="font-size:10px;color:rgba(228,225,240,0.3);">10/min – muy activo</span>
+            </div>
+          </div>
+
+          <button id="btn-lc-regenerate" class="sb-btn-secondary" style="width:100%;margin-top:6px;">
+            🔄 Actualizar preview
           </button>
         </div>
 
@@ -925,6 +937,7 @@ EJEMPLO:
             <button id="btn-lc-avatars" class="sb-btn-primary" style="width:100%;margin-top:8px;">
               🎨 Generar avatares
             </button>
+            <p style="font-size:10px;color:rgba(228,225,240,0.35);margin-top:6px;text-align:center;">★ Guion → Gemini Imagen · 💬 Relleno → DiceBear gratis</p>
             <div id="lc-avatar-progress" style="display:none;margin-top:10px;">
               <div class="lc-progress-bar"><div id="lc-progress-fill" class="lc-progress-fill" style="width:0%"></div></div>
               <div id="lc-progress-label" style="font-size:11px;color:rgba(228,225,240,0.5);margin-top:4px;text-align:center;">Generando...</div>
