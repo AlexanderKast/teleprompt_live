@@ -160,6 +160,71 @@ app.post('/api/generate-avatar', async (req, res) => {
   res.json({ url: publicUrl, username });
 });
 
+// ── POST /api/upload-avatar — sube imagen + inserta en lc_avatars ──
+// Recibe: { imageBase64, mimeType, gender, age_group, country }
+// Usa service role → no necesita RLS INSERT ni políticas de Storage
+app.post('/api/upload-avatar', async (req, res) => {
+  if (!sbStorage) return res.status(503).json({ error: 'Supabase no configurado en el servidor. Agrega SUPABASE_SERVICE_KEY en .env' });
+
+  const { imageBase64, mimeType = 'image/jpeg', gender, age_group, country } = req.body || {};
+
+  if (!imageBase64) return res.status(400).json({ error: 'imageBase64 requerido' });
+  if (!gender)      return res.status(400).json({ error: 'gender requerido' });
+  if (!age_group)   return res.status(400).json({ error: 'age_group requerido' });
+  if (!country)     return res.status(400).json({ error: 'country requerido' });
+
+  const BUCKET = 'fakelive-avatars';
+  const safe   = country.replace(/[^a-zA-Z]/g, '');
+  const filename = `avatars/${gender}_${age_group}_${safe}_${Date.now()}.jpg`;
+
+  try {
+    // Decodificar base64
+    const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+    let imageBuffer  = Buffer.from(base64Data, 'base64');
+
+    // Redimensionar con sharp si está disponible (100×100 final para DB)
+    if (sharp) {
+      imageBuffer = await sharp(imageBuffer)
+        .resize(200, 200, { fit: 'cover', position: 'centre' })
+        .jpeg({ quality: 75 })
+        .toBuffer();
+    }
+
+    // Crear bucket si no existe (service role puede hacerlo)
+    await sbStorage.storage.createBucket(BUCKET, { public: true }).catch(() => {});
+
+    // Subir al Storage
+    const { error: uploadErr } = await sbStorage.storage
+      .from(BUCKET)
+      .upload(filename, imageBuffer, { contentType: 'image/jpeg', upsert: true });
+    if (uploadErr) throw new Error('Storage: ' + uploadErr.message);
+
+    // URL pública
+    const { data: urlData } = sbStorage.storage.from(BUCKET).getPublicUrl(filename);
+    const publicUrl = urlData?.publicUrl;
+    if (!publicUrl) throw new Error('No se pudo obtener URL pública');
+
+    // Insertar en lc_avatars (service role bypasea RLS)
+    const { error: dbErr } = await sbStorage.from('lc_avatars').insert({
+      url: publicUrl, gender, age_group, country, style: 'photo'
+    });
+    if (dbErr) {
+      // Si la tabla no existe, dar instrucciones claras
+      if (dbErr.message.includes('does not exist') || dbErr.message.includes('relation')) {
+        throw new Error('La tabla lc_avatars no existe. Ejecuta supabase/migrations/lc_avatars.sql en tu Supabase dashboard.');
+      }
+      throw new Error('DB: ' + dbErr.message);
+    }
+
+    console.log(`[UploadAvatar] ✅ ${gender}/${age_group}/${country} → ${publicUrl}`);
+    res.json({ ok: true, url: publicUrl });
+
+  } catch (e) {
+    console.error('[UploadAvatar] Error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── POST /api/export-csv — genera CSV comma-delimited ─────────
 app.post('/api/export-csv', (req, res) => {
   const { rows } = req.body || {};
