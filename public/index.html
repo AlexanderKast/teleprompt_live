@@ -232,6 +232,11 @@
       </li>
     </ul>
 
+    <!-- Nuevo Proyecto -->
+    <button id="btn-new-project" title="Guardar proyecto actual e iniciar uno nuevo en blanco">
+      <span style="font-size:15px;">＋</span> Nuevo Proyecto
+    </button>
+
     <div id="sb-footer">
       <!-- Tarjeta de usuario (visible solo cuando hay sesión activa) -->
       <div id="sb-user-card" style="display:none;">
@@ -603,9 +608,18 @@
     <div id="section-historial" class="content-section">
       <div class="sb-section-hdr">
         <h2 class="sb-section-title">Historial</h2>
-        <p class="sb-section-sub">Guiones guardados y sesiones recientes</p>
+        <p class="sb-section-sub">Proyectos, guiones guardados y sesiones recientes</p>
       </div>
       <div class="sb-cards-col">
+
+        <!-- PROYECTOS -->
+        <div class="sb-card">
+          <div class="sb-card-title">
+            <span class="material-symbols-outlined" style="font-size:16px;color:#00e5ff;">inventory_2</span>
+            Proyectos
+          </div>
+          <div id="np-projects-list"></div>
+        </div>
 
         <div class="sb-card">
           <div class="sb-card-title">

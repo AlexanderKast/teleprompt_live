@@ -3183,3 +3183,222 @@ function bucleInjectCss() {
 // 00:00 [POPUP]       Título — Descripción — $Precio
 // 00:00 [FLASH_SALE]  Segundos — Descripción — $Precio
 // 00:00 [BOOM_VENTA]  Texto del momento de venta (pantalla completa)
+
+// ════════════════════════════════════════════════════════════════
+// SISTEMA DE PROYECTOS — Nuevo Proyecto / Historial completo
+// Guarda todo como un snapshot (guión + todas las configs)
+// y resetea la app a estado en blanco.
+// ════════════════════════════════════════════════════════════════
+
+const NP_KEY = 'fakelive_projects'; // lista de proyectos guardados
+
+// ── Recoger todo el estado actual ─────────────────────────────
+function npCollectAll() {
+  const ta = document.getElementById('script-textarea');
+  return {
+    id:       Date.now(),
+    savedAt:  new Date().toISOString(),
+    name:     document.getElementById('meta-titulo')?.value?.trim()
+              || `Proyecto ${new Date().toLocaleDateString('es-CO')}`,
+    script:   ta?.value?.trim() || '',
+    settings: (function(){ try { return JSON.parse(localStorage.getItem(LS_SETTINGS) || '{}'); } catch(_){ return {}; } })(),
+    metadata: (function(){ try { return JSON.parse(localStorage.getItem(LS_METADATA) || '{}'); } catch(_){ return {}; } })(),
+    profile:  (function(){ try { return JSON.parse(localStorage.getItem(LS_PROFILE)  || '{}'); } catch(_){ return {}; } })(),
+    stream:   (function(){ try { return JSON.parse(localStorage.getItem(LS_STREAM)   || '{}'); } catch(_){ return {}; } })(),
+    livecake: (function(){ try { return JSON.parse(localStorage.getItem(LS_LC)       || '{}'); } catch(_){ return {}; } })()
+  };
+}
+
+// ── Guardar proyecto en el historial ──────────────────────────
+function npSave() {
+  const snap = npCollectAll();
+  if (!snap.script && !snap.name.match(/^Proyecto\s/)) {
+    // Si no hay guión ni nombre personalizado, no guardamos
+    return false;
+  }
+  let list = [];
+  try { list = JSON.parse(localStorage.getItem(NP_KEY) || '[]'); } catch(_) {}
+  list.unshift(snap);
+  if (list.length > 30) list = list.slice(0, 30); // máx 30 proyectos
+  localStorage.setItem(NP_KEY, JSON.stringify(list));
+  return snap;
+}
+
+// ── Resetear todo a estado en blanco ─────────────────────────
+function npResetAll() {
+  // Guión
+  const ta = document.getElementById('script-textarea');
+  if (ta) { ta.value = ''; saveScript(); }
+
+  // Metadata
+  ['meta-titulo','meta-desc','meta-hashtags'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  const catEl = document.getElementById('meta-categoria');
+  if (catEl) catEl.value = '';
+  const idiomaEl = document.getElementById('meta-idioma');
+  if (idiomaEl) idiomaEl.value = 'es';
+  ['meta-plat-youtube','meta-plat-instagram','meta-plat-tiktok','meta-plat-facebook']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.checked = false; });
+  localStorage.removeItem(LS_METADATA);
+  sbUpdateTituloCount?.();
+
+  // Perfil del streamer
+  ['nombre','nicho','instagram','tiktok','whatsapp','cierre'].forEach(f => {
+    const el = document.getElementById('profile-' + f);
+    if (el) el.value = '';
+  });
+  localStorage.removeItem(LS_PROFILE);
+
+  // Configuración del stream
+  const defaults = { mirror: false, noComments: false, autoPause: false, shortcuts: true, playerBg: '#0a0a14' };
+  Object.entries(defaults).forEach(([k, v]) => {
+    const idMap = { mirror: 'setting-mirror', noComments: 'setting-no-comments',
+                    autoPause: 'setting-auto-pause', shortcuts: 'setting-show-shortcuts', playerBg: 'setting-player-bg' };
+    const el = document.getElementById(idMap[k]);
+    if (!el) return;
+    if (typeof v === 'boolean') el.checked = v;
+    else el.value = v;
+  });
+  localStorage.removeItem(LS_STREAM);
+
+  // LiveCake / LiveCache config
+  const lcDefaults = { country: 'Colombia', timeFormat: 'hace_seg', fillerPerMin: 7, genderRatio: 70,
+                       tipo: 'producto', nombreProducto: '', descProducto: '' };
+  Object.entries(lcDefaults).forEach(([k, v]) => {
+    const idMap = { country: 'lc-country', timeFormat: 'lc-time-format', fillerPerMin: 'lc-filler-per-min',
+                    genderRatio: 'lc-gender-ratio', tipo: 'lc-tipo',
+                    nombreProducto: 'lc-nombre-producto', descProducto: 'lc-desc-producto' };
+    const el = document.getElementById(idMap[k]);
+    if (!el) return;
+    el.value = v;
+  });
+  lcUpdateFillerLabel?.(7);
+  lcUpdateGenderLabel?.(70);
+  localStorage.removeItem(LS_LC);
+
+  // Teleprompter settings (velocidad, fuente, etc.)
+  localStorage.removeItem(LS_SETTINGS);
+  loadSettings?.();
+
+  // Pool de filler AI (limpiar)
+  if (typeof _lcAiFillerPool !== 'undefined') window._lcAiFillerPool = [];
+
+  // Checklist (reset de checks)
+  localStorage.removeItem(LS_LC_CHECKLIST);
+  lcRenderChecklist?.();
+}
+
+// ── Cargar un proyecto del historial ─────────────────────────
+function npLoadProject(id) {
+  let list = [];
+  try { list = JSON.parse(localStorage.getItem(NP_KEY) || '[]'); } catch(_) {}
+  const snap = list.find(p => p.id === id);
+  if (!snap) { showToast('Proyecto no encontrado', 'error'); return; }
+
+  // Restaurar guión
+  const ta = document.getElementById('script-textarea');
+  if (ta) { ta.value = snap.script || ''; saveScript(); }
+
+  // Restaurar localStorage keys
+  if (snap.settings && Object.keys(snap.settings).length) localStorage.setItem(LS_SETTINGS, JSON.stringify(snap.settings));
+  if (snap.metadata && Object.keys(snap.metadata).length) localStorage.setItem(LS_METADATA, JSON.stringify(snap.metadata));
+  if (snap.profile  && Object.keys(snap.profile).length)  localStorage.setItem(LS_PROFILE,  JSON.stringify(snap.profile));
+  if (snap.stream   && Object.keys(snap.stream).length)   localStorage.setItem(LS_STREAM,   JSON.stringify(snap.stream));
+  if (snap.livecake && Object.keys(snap.livecake).length) localStorage.setItem(LS_LC,       JSON.stringify(snap.livecake));
+
+  // Recargar campos del DOM
+  loadSettings?.();
+  sbLoadMetadata?.();
+  sbLoadProfile?.();
+  sbLoadStreamSettings?.();
+  lcLoadConfig?.();
+
+  showToast(`✅ Proyecto cargado: ${snap.name}`);
+  sbNavTo('prompter');
+}
+
+// ── Eliminar un proyecto del historial ───────────────────────
+function npDeleteProject(id) {
+  let list = [];
+  try { list = JSON.parse(localStorage.getItem(NP_KEY) || '[]'); } catch(_) {}
+  list = list.filter(p => p.id !== id);
+  localStorage.setItem(NP_KEY, JSON.stringify(list));
+  npRenderProjects();
+}
+
+// ── Renderizar lista de proyectos en #np-projects-list ───────
+function npRenderProjects() {
+  const container = document.getElementById('np-projects-list');
+  if (!container) return;
+  let list = [];
+  try { list = JSON.parse(localStorage.getItem(NP_KEY) || '[]'); } catch(_) {}
+
+  if (!list.length) {
+    container.innerHTML = '<div class="np-empty">Sin proyectos guardados.<br>Pulsa "＋ Nuevo Proyecto" para guardar el actual.</div>';
+    return;
+  }
+
+  container.innerHTML = list.map(p => {
+    const fecha = p.savedAt ? new Date(p.savedAt).toLocaleDateString('es-CO',
+      { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—';
+    const lineas = p.script ? p.script.split('\n').filter(Boolean).length : 0;
+    const bloques = p.script ? (p.script.match(/\[/g) || []).length : 0;
+    return `
+    <div class="np-project-item">
+      <div class="np-project-icon">📁</div>
+      <div class="np-project-info">
+        <div class="np-project-name" title="${p.name}">${p.name}</div>
+        <div class="np-project-meta">
+          <span>📅 ${fecha}</span>
+          <span>📝 ${bloques} bloques</span>
+          ${p.livecake?.nombreProducto ? `<span>🎯 ${p.livecake.nombreProducto}</span>` : ''}
+        </div>
+      </div>
+      <div class="np-project-actions">
+        <button class="np-btn-load" onclick="npLoadProject(${p.id})">Cargar</button>
+        <button class="np-btn-del"  onclick="if(confirm('¿Eliminar este proyecto?')) npDeleteProject(${p.id})">🗑</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Flujo completo: guardar → resetear → ir a Prompter ───────
+function npNewProject() {
+  const ta = document.getElementById('script-textarea');
+  const hasContent = ta?.value?.trim().length > 0;
+  const hasMeta    = document.getElementById('meta-titulo')?.value?.trim().length > 0;
+
+  if (hasContent || hasMeta) {
+    const ok = confirm('Se guardará el proyecto actual en el historial\ny la app quedará en blanco.\n\n¿Continuar?');
+    if (!ok) return;
+    const saved = npSave();
+    if (saved) showToast(`💾 Guardado: ${saved.name}`);
+  }
+
+  npResetAll();
+  sbNavTo('prompter');
+  showToast('✨ Nuevo proyecto en blanco listo');
+}
+
+// ── Hook: renderizar proyectos al abrir Historial ────────────
+// Envolvemos sbNavTo para añadir npRenderProjects cuando se abre historial
+const _np_realNav = sbNavTo;
+window.sbNavTo = function(section) {
+  _np_realNav(section);
+  if (section === 'historial') npRenderProjects();
+};
+
+// ── Bind botón Nuevo Proyecto ─────────────────────────────────
+(function npInit() {
+  function bindBtn() {
+    const btn = document.getElementById('btn-new-project');
+    if (btn) btn.addEventListener('click', npNewProject);
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindBtn);
+  } else {
+    bindBtn();
+  }
+})();
