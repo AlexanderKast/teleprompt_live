@@ -27,6 +27,7 @@ function sbClientInit() {
     sbClient = window.supabase.createClient(SB_URL, SB_ANON, {
       auth: { persistSession: true, autoRefreshToken: true }
     });
+    window.sbClient = sbClient; // exponer para app.js (lc_avatars, etc.)
   } catch (e) {
     console.error('[SB] Error inicializando cliente:', e);
   }

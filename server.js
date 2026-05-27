@@ -162,22 +162,22 @@ app.post('/api/generate-avatar', async (req, res) => {
   res.json({ url: publicUrl, username });
 });
 
-// ── POST /api/export-csv — genera y devuelve CSV ──────────────
+// ── POST /api/export-csv — genera y devuelve CSV (comma-delimited) ──
 app.post('/api/export-csv', (req, res) => {
   const { rows } = req.body || {};
   if (!rows || !rows.length) return res.status(400).json({ error: 'No hay filas' });
 
+  const quote = v => `"${String(v).replace(/"/g, '""')}"`;
+
   const BOM    = '﻿';
-  const header = 'Title\tContent\tTime\tImage';
+  const header = '"Title","Content","Time","Image"';
   const lines  = rows.map(r =>
-    [r.title, r.content, r.time, r.imageUrl || '']
-      .map(v => String(v).replace(/\t|\n/g, ' '))
-      .join('\t')
+    [r.title, r.content, r.time, r.imageUrl || ''].map(quote).join(',')
   );
 
-  const csv       = BOM + header + '\n' + lines.join('\n');
-  const ts        = new Date().toISOString().slice(0, 16).replace('T', '_').replace(':', '-');
-  const country   = (rows[0]?.country || 'export').replace(/[^a-zA-Z]/g, '');
+  const csv     = BOM + header + '\n' + lines.join('\n');
+  const ts      = new Date().toISOString().slice(0, 16).replace('T', '_').replace(':', '-');
+  const country = (rows[0]?.country || 'export').replace(/[^a-zA-Z]/g, '');
 
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="livecake_${country}_${ts}.csv"`);

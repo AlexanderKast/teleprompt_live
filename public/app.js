@@ -1771,7 +1771,8 @@ const LC_INTEREST = [
 const LS_LC = 'fakelive_livecake';
 let _lcComments   = [];   // lista generada actual
 let _lcAvatarMap  = {};   // username → url
-let _lcNamesSeeds = {};   // username → assigned display name (para regenerar solo nombres)
+let _lcDbAvatars  = null; // null = sin cargar, [] = cargado (vacío o con datos)
+let _lcNamesSeeds = {};   // username → assigned display name
 
 // ── Helpers ───────────────────────────────────────────────
 function lcRand(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
@@ -1805,6 +1806,52 @@ function lcFormatTime(totalSec, format) {
   if (totalSec < 60) return `Hace ${Math.max(1, totalSec)} segundo${totalSec === 1 ? '' : 's'}`;
   const m = Math.floor(totalSec / 60);
   return `Hace ${m} minuto${m === 1 ? '' : 's'}`;
+}
+
+// ── Helpers de avatar DB ──────────────────────────────────
+
+// Detecta grupo de edad a partir del username (ej: "Carlos25" → young)
+function lcDetectAgeGroup(username) {
+  const match = (username || '').match(/\d+/);
+  if (match) {
+    const n = parseInt(match[0], 10);
+    if (n >= 18 && n <= 28) return 'young';
+    if (n >= 29 && n <= 38) return 'adult';
+    if (n >= 39 && n <= 65) return 'middle';
+  }
+  const groups = ['young', 'adult', 'middle'];
+  return groups[Math.floor(Math.random() * groups.length)];
+}
+
+// Carga avatares de lc_avatars una sola vez por sesión
+async function lcFetchDbAvatars() {
+  if (_lcDbAvatars !== null) return _lcDbAvatars;
+  try {
+    const client = window.sbClient;
+    if (!client) throw new Error('sbClient no disponible');
+    const { data, error } = await client.from('lc_avatars').select('*');
+    if (error) throw error;
+    _lcDbAvatars = data || [];
+    console.log(`[LC] ${_lcDbAvatars.length} avatares cargados de la DB`);
+  } catch (e) {
+    console.warn('[LC] lc_avatars no disponible:', e.message, '→ usando DiceBear');
+    _lcDbAvatars = [];
+  }
+  return _lcDbAvatars;
+}
+
+// Selecciona un avatar de la DB según género, país y grupo de edad
+function lcPickDbAvatar(gender, country, ageGroup) {
+  if (!_lcDbAvatars || !_lcDbAvatars.length) return null;
+  // Intento 1: match exacto
+  let pool = _lcDbAvatars.filter(a => a.gender === gender && a.country === country && a.age_group === ageGroup);
+  // Intento 2: relajar age_group
+  if (!pool.length) pool = _lcDbAvatars.filter(a => a.gender === gender && a.country === country);
+  // Intento 3: solo género
+  if (!pool.length) pool = _lcDbAvatars.filter(a => a.gender === gender);
+  // Intento 4: cualquiera
+  if (!pool.length) pool = _lcDbAvatars;
+  return pool[Math.floor(Math.random() * pool.length)]?.url || null;
 }
 
 function lcGetConfig() {
@@ -1959,9 +2006,19 @@ function lcRenderPreview() {
   if (total > 15) html += `<div class="lc-preview-more">... y ${total - 15} comentarios más</div>`;
   container.innerHTML = html;
 
-  if (statsEl) statsEl.textContent = `★ ${scriptedCount} del guion (IA) · 💬 ${fillerCount} relleno (gratis) · total: ${total}`;
+  if (statsEl) statsEl.textContent = `★ ${scriptedCount} del guion · 💬 ${fillerCount} relleno · total: ${total}`;
   if (warnEl) { warnEl.style.display = scriptedCount === 0 ? '' : 'none'; warnEl.textContent = '⚠️ No hay [COMENTARIO] en el guion.'; }
   if (okEl)   { okEl.style.display   = total >= 20 ? '' : 'none'; okEl.textContent   = `✅ ${total} comentarios listos para exportar a LiveCake.`; }
+
+  // Mostrar panel de exportación siempre
+  const step2 = document.getElementById('lc-step-2');
+  const step3 = document.getElementById('lc-step-3');
+  if (step2) step2.style.display = '';
+  if (step3) step3.style.display = '';
+  lcRefreshCsvPreview();
+
+  // Auto-asignar avatares en background (DB → DiceBear fallback)
+  lcAutoAssignAvatars();
 
   lcSaveConfig();
 }
@@ -1970,126 +2027,50 @@ function lcRenderPreview() {
 async function lcUpdateStatus() {
   const nanoEl = document.getElementById('lc-chip-nano');
   const sbEl   = document.getElementById('lc-chip-sb');
-  try {
-    const r = await fetch('/api/avatar-status');
-    if (!r.ok) throw new Error('backend unavailable');
-    const s = await r.json();
-    if (nanoEl) {
-      nanoEl.className   = 'lc-chip ' + (s.nanobanana ? 'lc-chip-ok' : 'lc-chip-warn');
-      nanoEl.textContent = s.nanobanana ? '🟢 Gemini Imagen: activo' : '🟡 Sin Gemini key: modo DiceBear';
-    }
-    if (sbEl) {
-      sbEl.className   = 'lc-chip ' + (s.supabase ? 'lc-chip-ok' : 'lc-chip-warn');
-      sbEl.textContent = s.supabase ? '🟢 Supabase Storage: activo' : '🟡 Sin Supabase: avatares temporales';
-    }
-  } catch (_) {
-    if (nanoEl) { nanoEl.className = 'lc-chip lc-chip-warn'; nanoEl.textContent = '🟡 Servidor local: no activo'; }
-    if (sbEl)   { sbEl.className   = 'lc-chip lc-chip-warn'; sbEl.textContent   = '🟡 Avatares: DiceBear (gratis)'; }
+  if (nanoEl) {
+    const geminiKey = localStorage.getItem('fakelive_gemini_key') || '';
+    nanoEl.className   = 'lc-chip ' + (geminiKey ? 'lc-chip-ok' : 'lc-chip-warn');
+    nanoEl.textContent = geminiKey ? '🟢 Gemini IA: activo' : '🟡 Sin Gemini key';
+  }
+  if (sbEl) {
+    sbEl.className   = 'lc-chip lc-chip-warn';
+    sbEl.textContent = '⏳ Avatares DB: cargando...';
+    await lcFetchDbAvatars();
+    const count = _lcDbAvatars?.length || 0;
+    sbEl.className   = 'lc-chip ' + (count > 0 ? 'lc-chip-ok' : 'lc-chip-warn');
+    sbEl.textContent = count > 0 ? `🟢 Avatares DB: ${count} disponibles` : '🟡 Avatares: DiceBear activo';
   }
 }
 
-// ── Enviar configuración al servidor ─────────────────────
-// La Gemini key se usa tanto para IA de texto como para Gemini Imagen 3 (avatares)
+// ── Enviar Gemini key al servidor (para generación de avatares ad-hoc) ──
 function lcSendConfigToServer() {
-  const nano   = localStorage.getItem('fakelive_gemini_key')       || ''; // misma clave que Gemini
-  const sbUrl  = localStorage.getItem('fakelive_supabase_url')     || '';
-  const sbAnon = localStorage.getItem('fakelive_supabase_anon')    || '';
-  const sbSvc  = localStorage.getItem('fakelive_supabase_service') || '';
-  if (!nano && !sbUrl) return;
+  const nano = localStorage.getItem('fakelive_gemini_key') || '';
+  if (!nano) return;
   fetch('/api/config', {
-    method: 'POST',
+    method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ nanobananaKey: nano, supabaseUrl: sbUrl, supabaseAnon: sbAnon, supabaseService: sbSvc })
+    body:    JSON.stringify({ nanobananaKey: nano })
   }).catch(() => {}); // falla silenciosamente en Vercel
 }
 
-// ── Generar avatares ──────────────────────────────────────
-// • Scripted [★]: llama a /api/generate-avatar (Gemini Imagen → DiceBear fallback)
-// • Filler   [·]: DiceBear URL directo, instantáneo, costo CERO
-async function lcGenerateAvatars() {
-  const btn      = document.getElementById('btn-lc-avatars');
-  const progWrap = document.getElementById('lc-avatar-progress');
-  const progFill = document.getElementById('lc-progress-fill');
-  const progLbl  = document.getElementById('lc-progress-label');
-  const doneEl   = document.getElementById('lc-avatar-done');
-
-  if (!_lcComments.length) {
-    lcRenderPreview();
-    if (!_lcComments.length) { showToast('Escribe tu guion en el Prompter primero', 'error'); return; }
-  }
-
-  btn.disabled           = true;
-  progWrap.style.display = '';
-  doneEl.style.display   = 'none';
-
+// ── Auto-asignar avatares desde lc_avatars DB ────────────
+// Se llama automáticamente al renderizar — sin intervención del usuario
+async function lcAutoAssignAvatars() {
+  if (!_lcComments.length) return;
+  await lcFetchDbAvatars();
   const cfg    = lcGetConfig();
   const unique = [...new Set(_lcComments.map(c => c.username))];
-  const total  = unique.length;
-  let   done   = 0;
-
-  // Función de actualización de progreso
-  const tick = () => {
-    done++;
-    const pct = Math.round((done / total) * 100);
-    if (progFill) progFill.style.width = pct + '%';
-    if (progLbl)  progLbl.textContent  = `Generando... ${done}/${total}`;
-    lcRenderPreviewAvatars();
-  };
-
-  const doOne = async (username) => {
-    if (_lcAvatarMap[username]) { done++; return; }   // ya tiene avatar
-
-    const c          = _lcComments.find(x => x.username === username);
-    const isScripted = c?.type === 'scripted';
-    const gender     = c?.gender || 'female';
-
-    if (!isScripted) {
-      // ── Filler: DiceBear instantáneo (sin llamada al servidor) ──
-      _lcAvatarMap[username] =
-        `https://api.dicebear.com/9.x/personas/svg?seed=${encodeURIComponent(username)}&size=100`;
-      tick();
-      return;
-    }
-
-    // ── Scripted: Gemini Imagen → DiceBear fallback ──
-    try {
-      const r = await fetch('/api/generate-avatar', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ username, country: cfg.country, gender })
-      });
-      if (r.ok) {
-        const d = await r.json();
-        _lcAvatarMap[username] = d.url;
-      } else { throw new Error('server error'); }
-    } catch (_) {
-      _lcAvatarMap[username] =
-        `https://api.dicebear.com/9.x/personas/svg?seed=${encodeURIComponent(username)}&size=100`;
-    }
-    tick();
-  };
-
-  // Filler primero (instantáneo), luego scripted en lotes de 3 concurrentes
-  const fillerNames   = unique.filter(u => _lcComments.find(c => c.username === u)?.type !== 'scripted');
-  const scriptedNames = unique.filter(u => _lcComments.find(c => c.username === u)?.type === 'scripted');
-
-  // Filler: todos a la vez (solo asignación de URL, sin fetch)
-  await Promise.all(fillerNames.map(doOne));
-
-  // Scripted: máx 3 concurrentes (llamadas a API)
-  const chunks = [];
-  for (let i = 0; i < scriptedNames.length; i += 3) chunks.push(scriptedNames.slice(i, i + 3));
-  for (const chunk of chunks) await Promise.all(chunk.map(doOne));
-
-  progWrap.style.display = 'none';
-  doneEl.style.display   = '';
-  const aiCount    = scriptedNames.length;
-  const freeCount  = fillerNames.length;
-  doneEl.textContent = `✅ ${total} avatares listos (${aiCount} IA · ${freeCount} gratis)`;
-  btn.disabled = false;
-
-  lcShowStep2();
-  showToast(`${total} avatares generados (${aiCount} Gemini · ${freeCount} DiceBear) ✓`, 'success');
+  for (const username of unique) {
+    if (_lcAvatarMap[username]) continue;
+    const c        = _lcComments.find(x => x.username === username);
+    const gender   = c?.gender || (Math.random() < 0.6 ? 'female' : 'male');
+    const ageGroup = lcDetectAgeGroup(username);
+    const dbUrl    = lcPickDbAvatar(gender, cfg.country, ageGroup);
+    _lcAvatarMap[username] = dbUrl ||
+      `https://api.dicebear.com/9.x/personas/svg?seed=${encodeURIComponent(username)}&size=100`;
+  }
+  lcRenderPreviewAvatars();
+  lcRefreshCsvPreview();
 }
 
 // Actualiza solo las imágenes del preview sin regenerar todo
@@ -2104,24 +2085,20 @@ function lcRenderPreviewAvatars() {
   });
 }
 
-// ── Mostrar step 2 (CSV preview) ─────────────────────────
-function lcShowStep2() {
-  const step2 = document.getElementById('lc-step-2');
-  const step3 = document.getElementById('lc-step-3');
-  if (step2) step2.style.display = '';
-  if (step3) step3.style.display = '';
-
-  // Mostrar primeras 5 filas del CSV
+// ── Refrescar preview del CSV (comma-delimited) ───────────
+function lcRefreshCsvPreview() {
   const el = document.getElementById('lc-csv-preview');
   if (!el || !_lcComments.length) return;
-  const rows = [['Title','Content','Time','Image']];
+  const rows = [['Title', 'Content', 'Time', 'Image']];
   _lcComments.slice(0, 5).forEach(c => {
     rows.push([c.username, c.text, c.timeStr, _lcAvatarMap[c.username] || '']);
   });
-  el.textContent = rows.map(r => r.join('\t')).join('\n');
+  el.textContent = rows.map(r =>
+    r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')
+  ).join('\n');
 }
 
-// ── Descargar CSV ─────────────────────────────────────────
+// ── Descargar CSV (comma-delimited) ──────────────────────
 async function lcDownloadCSV() {
   if (!_lcComments.length) { showToast('Genera los comentarios primero', 'error'); return; }
   const cfg  = lcGetConfig();
@@ -2133,14 +2110,14 @@ async function lcDownloadCSV() {
     country:  cfg.country
   }));
 
-  const ts = new Date().toISOString().slice(0, 16).replace('T', '_').replace(/:/g, '-');
-  const filename = `livecake_${cfg.country.replace(/[^a-zA-Z]/g,'')}_${ts}.csv`;
+  const ts       = new Date().toISOString().slice(0, 16).replace('T', '_').replace(/:/g, '-');
+  const filename = `livecake_${cfg.country.replace(/[^a-zA-Z]/g, '')}_${ts}.csv`;
 
   try {
     const r = await fetch('/api/export-csv', {
-      method: 'POST',
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rows })
+      body:    JSON.stringify({ rows })
     });
     if (r.ok) {
       const blob = await r.blob();
@@ -2153,13 +2130,13 @@ async function lcDownloadCSV() {
     }
   } catch (_) { /* backend no disponible, generar client-side */ }
 
-  // Fallback: generar CSV en el navegador
+  // Fallback: generar CSV en el navegador (comma-delimited)
   const BOM    = '﻿';
-  const header = 'Title\tContent\tTime\tImage';
+  const header = '"Title","Content","Time","Image"';
   const lines  = rows.map(r =>
     [r.title, r.content, r.time, r.imageUrl]
-      .map(v => String(v).replace(/\t|\n/g, ' '))
-      .join('\t')
+      .map(v => `"${String(v).replace(/"/g, '""')}"`)
+      .join(',')
   );
   const csv  = BOM + header + '\n' + lines.join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -2170,74 +2147,25 @@ async function lcDownloadCSV() {
   showToast(`CSV descargado — ${rows.length} comentarios ✓`, 'success');
 }
 
-// ── Copiar como texto ─────────────────────────────────────
-function lcCopyTSV() {
+// ── Copiar como CSV ───────────────────────────────────────
+function lcCopyCSV() {
   if (!_lcComments.length) { showToast('Genera los comentarios primero', 'error'); return; }
-  const header = 'Title\tContent\tTime\tImage';
+  const header = '"Title","Content","Time","Image"';
   const lines  = _lcComments.map(c =>
-    [c.username, c.text, c.timeStr, _lcAvatarMap[c.username] || ''].join('\t')
+    [c.username, c.text, c.timeStr, _lcAvatarMap[c.username] || '']
+      .map(v => `"${String(v).replace(/"/g, '""')}"`)
+      .join(',')
   );
   navigator.clipboard.writeText(header + '\n' + lines.join('\n'))
     .then(() => showToast('Copiado al portapapeles ✓'))
     .catch(() => showToast('Error al copiar', 'error'));
 }
 
-// ── Probar Supabase ───────────────────────────────────────
-async function lcTestSupabase() {
-  const btn = document.getElementById('btn-test-supabase-lc');
-  const res = document.getElementById('supabase-lc-test-result');
-  btn.disabled = true;
-  btn.textContent = 'Probando...';
-  res.style.display = 'none';
-  // Enviar config primero
-  lcSendConfigToServer();
-  await new Promise(r => setTimeout(r, 800));
-  try {
-    const r = await fetch('/api/avatar-status');
-    const s = r.ok ? await r.json() : { supabase: false };
-    res.style.display = 'block';
-    if (s.supabase) {
-      res.style.background = 'rgba(0,200,83,0.12)'; res.style.color = '#00e475'; res.style.border = '1px solid rgba(0,200,83,0.3)';
-      res.textContent = '✅ Supabase conectado correctamente';
-    } else {
-      res.style.background = 'rgba(234,195,43,0.1)'; res.style.color = '#eac32b'; res.style.border = '1px solid rgba(234,195,43,0.2)';
-      res.textContent = '🟡 Supabase no configurado — modo DiceBear activo';
-    }
-  } catch (_) {
-    res.style.display = 'block';
-    res.style.background = 'rgba(255,23,68,0.1)'; res.style.color = '#ff5166'; res.style.border = '1px solid rgba(255,23,68,0.25)';
-    res.textContent = '🟡 Servidor local no activo — en Vercel se usa DiceBear automáticamente';
-  } finally {
-    btn.disabled = false; btn.textContent = '🧪 Probar Supabase';
-  }
-}
-
-// ── Cargar/guardar API keys de LiveCake (solo Supabase Storage) ──
-// La Gemini key se gestiona en sbLoadStreamSettings / sbSaveStreamSettings
-function lcLoadApiKeys() {
-  const el2 = document.getElementById('lc-supabase-url');
-  const el3 = document.getElementById('lc-supabase-anon');
-  const el4 = document.getElementById('lc-supabase-service');
-  if (el2) el2.value = localStorage.getItem('fakelive_supabase_url')      || '';
-  if (el3) el3.value = localStorage.getItem('fakelive_supabase_anon')     || '';
-  if (el4) el4.value = localStorage.getItem('fakelive_supabase_service')  || '';
-}
-
-function lcSaveApiKeys() {
-  const url  = document.getElementById('lc-supabase-url')?.value?.trim();
-  const anon = document.getElementById('lc-supabase-anon')?.value?.trim();
-  const svc  = document.getElementById('lc-supabase-service')?.value?.trim();
-  if (url  !== undefined) localStorage.setItem('fakelive_supabase_url',     url);
-  if (anon !== undefined) localStorage.setItem('fakelive_supabase_anon',    anon);
-  if (svc  !== undefined) localStorage.setItem('fakelive_supabase_service', svc);
-  lcSendConfigToServer();
-}
-
 // ── Entrada a la sección ──────────────────────────────────
 function lcOnEnter() {
   lcLoadConfig();
   lcAutoDetectDuration();
-  lcSendConfigToServer(); // envía la Gemini key (y Supabase si está) al servidor
+  lcSendConfigToServer();
   lcRenderPreview();
   lcUpdateStatus();
 }
@@ -2247,43 +2175,28 @@ const _lcOrigNavTo = sbNavTo;
 sbNavTo = function (section) {
   _lcOrigNavTo.apply(this, [section]);
   if (section === 'livecake') lcOnEnter();
-  if (section === 'settings') lcLoadApiKeys();
 };
 
 // ── Bindings ─────────────────────────────────────────────
 function lcBindAll() {
-  // Config changes → re-render preview
   ['lc-country', 'lc-time-format'].forEach(id => {
     document.getElementById(id)?.addEventListener('change', lcRenderPreview);
   });
 
-  // Slider de densidad de filler
   document.getElementById('lc-filler-per-min')?.addEventListener('input', e => {
     lcUpdateFillerLabel(e.target.value);
     lcRenderPreview();
   });
 
-  // Botón refrescar (re-lee el guion y regenera)
   document.getElementById('btn-lc-regenerate')?.addEventListener('click', lcRenderPreview);
+  document.getElementById('btn-lc-download')?.addEventListener('click',   lcDownloadCSV);
+  document.getElementById('btn-lc-copy')?.addEventListener('click',       lcCopyCSV);
 
-  document.getElementById('btn-lc-avatars')?.addEventListener('click',  lcGenerateAvatars);
-  document.getElementById('btn-lc-download')?.addEventListener('click', lcDownloadCSV);
-  document.getElementById('btn-lc-copy')?.addEventListener('click',     lcCopyTSV);
-  document.getElementById('btn-test-supabase-lc')?.addEventListener('click', lcTestSupabase);
-
-  // Guardar Supabase keys al cambiar (Gemini key se gestiona en sbSaveStreamSettings)
-  ['lc-supabase-url','lc-supabase-anon','lc-supabase-service'].forEach(id => {
-    document.getElementById(id)?.addEventListener('change', lcSaveApiKeys);
-    document.getElementById(id)?.addEventListener('blur',   lcSaveApiKeys);
-  });
-
-  // Cuando se guarda la Gemini key, re-enviar config al servidor (para avatares)
   document.getElementById('gemini-key-input')?.addEventListener('change', lcSendConfigToServer);
   document.getElementById('gemini-key-input')?.addEventListener('blur',   lcSendConfigToServer);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   lcBindAll();
-  lcLoadApiKeys();
   lcSendConfigToServer();
 });

@@ -663,24 +663,7 @@
           </button>
           <div id="gemini-test-result" style="display:none;margin-top:10px;font-size:12px;padding:10px 12px;border-radius:8px;"></div>
 
-          <div style="border-top:1px solid rgba(255,255,255,0.07);margin:14px 0 10px;"></div>
-
-          <!-- Supabase para LiveCake Storage -->
-          <div class="sb-field-group">
-            <label class="sb-label">☁️ Supabase URL (LiveCake Storage)</label>
-            <input id="lc-supabase-url" type="text" placeholder="https://xxxx.supabase.co" class="sb-input" autocomplete="off"/>
-          </div>
-          <div class="sb-field-group">
-            <label class="sb-label">☁️ Supabase Anon Key</label>
-            <input id="lc-supabase-anon" type="password" placeholder="eyJ..." class="sb-input" autocomplete="off"/>
-          </div>
-          <div class="sb-field-group">
-            <label class="sb-label">🔑 Supabase Service Role Key</label>
-            <input id="lc-supabase-service" type="password" placeholder="eyJ..." class="sb-input" autocomplete="off"/>
-            <p style="font-size:10px;color:rgba(255,60,90,0.65);margin-top:4px;">⚠️ Acceso total. Solo se usa en el servidor local, nunca se expone al navegador.</p>
-          </div>
-          <button id="btn-test-supabase-lc" class="sb-btn-secondary" style="width:100%;margin-top:2px;">🧪 Probar Supabase</button>
-          <div id="supabase-lc-test-result" style="display:none;margin-top:10px;font-size:12px;padding:10px 12px;border-radius:8px;"></div>
+          <p style="font-size:10px;color:rgba(228,225,240,0.35);margin-top:6px;line-height:1.5;">La Gemini key también se usa para generar avatares con IA. Los avatares de relleno se asignan automáticamente desde la base de datos de la plataforma.</p>
 
         </div>
 
@@ -927,38 +910,28 @@ EJEMPLO:
 
           <!-- Status chips -->
           <div class="lc-status-chips" id="lc-status-chips">
-            <span class="lc-chip" id="lc-chip-nano">⚙️ Gemini Imagen: cargando...</span>
-            <span class="lc-chip" id="lc-chip-sb">⚙️ Supabase Storage: cargando...</span>
+            <span class="lc-chip" id="lc-chip-nano">⚙️ Gemini IA: cargando...</span>
+            <span class="lc-chip" id="lc-chip-sb">⏳ Avatares DB: cargando...</span>
           </div>
 
-          <!-- Step 1: Avatares -->
-          <div class="lc-step-block" id="lc-step-1">
-            <div class="lc-step-label">1 · Generar avatares</div>
-            <button id="btn-lc-avatars" class="sb-btn-primary" style="width:100%;margin-top:8px;">
-              🎨 Generar avatares
-            </button>
-            <p style="font-size:10px;color:rgba(228,225,240,0.35);margin-top:6px;text-align:center;">★ Guion → Gemini Imagen · 💬 Relleno → DiceBear gratis</p>
-            <div id="lc-avatar-progress" style="display:none;margin-top:10px;">
-              <div class="lc-progress-bar"><div id="lc-progress-fill" class="lc-progress-fill" style="width:0%"></div></div>
-              <div id="lc-progress-label" style="font-size:11px;color:rgba(228,225,240,0.5);margin-top:4px;text-align:center;">Generando...</div>
-            </div>
-            <div id="lc-avatar-done" style="display:none;margin-top:8px;font-size:12px;color:#00e475;">✅ Avatares listos</div>
-          </div>
+          <p style="font-size:10px;color:rgba(228,225,240,0.3);margin:6px 0 10px;text-align:center;">
+            Los avatares se asignan automáticamente al cargar el guion
+          </p>
 
           <!-- Step 2: Preview CSV -->
-          <div class="lc-step-block" id="lc-step-2" style="display:none;">
-            <div class="lc-step-label">2 · Revisar CSV</div>
+          <div class="lc-step-block" id="lc-step-2">
+            <div class="lc-step-label">1 · Revisar CSV</div>
             <div id="lc-csv-preview" class="lc-csv-preview"></div>
           </div>
 
           <!-- Step 3: Descarga -->
-          <div class="lc-step-block" id="lc-step-3" style="display:none;">
-            <div class="lc-step-label">3 · Descargar</div>
+          <div class="lc-step-block" id="lc-step-3">
+            <div class="lc-step-label">2 · Descargar</div>
             <button id="btn-lc-download" class="sb-btn-teal" style="width:100%;margin-top:8px;">
               ⬇️ Descargar CSV para LiveCake
             </button>
             <button id="btn-lc-copy" class="sb-btn-ghost-primary" style="width:100%;margin-top:8px;height:36px;font-size:13px;">
-              📋 Copiar como texto
+              📋 Copiar como CSV
             </button>
           </div>
 
