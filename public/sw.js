@@ -1,6 +1,6 @@
 // FakeLive Pro — Service Worker (PWA offline support)
-const CACHE_NAME  = 'fakelive-pro-v16';
-const CACHE_CDN   = 'fakelive-cdn-v16';
+const CACHE_NAME  = 'fakelive-pro-v17';
+const CACHE_CDN   = 'fakelive-cdn-v17';
 
 // App shell: cached on install → instant load offline
 const APP_SHELL = [

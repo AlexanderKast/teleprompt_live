@@ -1749,7 +1749,8 @@ let _lcDbAvatars     = null; // null = sin cargar, [] = cargado (vacío o con da
 let _lcNamesSeeds    = {};   // username → assigned display name
 let _lcAiFillerPool    = null;  // [] cuando la IA generó comentarios; null = no generado aún
 let _lcAiScriptKey     = '';    // hash del script para invalidar caché de IA
-let _lcAiFillerLoading = false; // lock: evita llamadas concurrentes a Gemini
+let _lcAiFillerLoading = false; // lock: evita llamadas concurrentes a Gemini (filler)
+let _lcGenderCache     = {};    // username → 'female'|'male' (detectado por IA)
 
 // ── Hash determinístico (mismo input → mismo número siempre) ──────
 function lcHashInt(str) {
@@ -1779,6 +1780,68 @@ function lcDetectGender(username) {
 
   // Fallback determinístico por hash (sin random)
   return lcHashInt(username) % 3 !== 0 ? 'female' : 'male'; // 67% female (típico en lives)
+}
+
+// ── Detección de género con IA (Gemini) — una sola llamada batch ─────
+// Envía TODOS los usernames en una llamada, cachea resultados.
+// No bloquea el render (async en background). Usa _lcGenderCache.
+async function lcDetectGendersWithAI(usernames) {
+  if (!usernames.length) return;
+  const geminiKey = localStorage.getItem('fakelive_gemini_key') || '';
+  if (!geminiKey) return;
+
+  // Filtrar solo los que no están en caché
+  const pending = usernames.filter(u => _lcGenderCache[u] === undefined);
+  if (!pending.length) return;
+
+  const prompt = `Eres un detector de género para nombres de usuario de redes sociales latinoamericanas.
+
+Para cada username de la lista, determina si el nombre propio que contiene es de MUJER o HOMBRE.
+Analiza el nombre real dentro del username (ej: "Sofia_Bogota" → "Sofia" → female, "CarlosM25" → "Carlos" → male).
+
+Usernames: ${JSON.stringify(pending)}
+
+Responde SOLO con JSON válido, sin markdown, sin explicaciones:
+{"username1":"female","username2":"male"}
+
+Reglas:
+- "female" = nombre de mujer
+- "male" = nombre de hombre
+- Si no puedes determinar con certeza → "female" (mayoría del público en lives)`;
+
+  try {
+    const r = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.1, maxOutputTokens: 800 }
+        }),
+        signal: AbortSignal.timeout(12000)
+      }
+    );
+    if (!r.ok) return;
+    const data      = await r.json();
+    const raw       = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return;
+    const parsed = JSON.parse(jsonMatch[0]);
+    // Guardar en caché solo valores válidos
+    for (const [u, g] of Object.entries(parsed)) {
+      if (g === 'female' || g === 'male') _lcGenderCache[u] = g;
+    }
+    console.log(`[LC] IA detectó género de ${Object.keys(parsed).length} usernames`);
+  } catch (e) {
+    console.warn('[LC] AI gender detection falló:', e.message, '→ usando detección local');
+  }
+}
+
+// ── Obtener género de un username (caché IA → detección local) ──────
+function lcGetGender(username, commentGender) {
+  // Prioridad: (1) género guardado en el comentario, (2) caché IA, (3) detección local
+  return commentGender || _lcGenderCache[username] || lcDetectGender(username);
 }
 
 // ── Avatar fallback con randomuser.me (retratos reales, sin API key) ──
@@ -2159,11 +2222,10 @@ function lcRenderPreview() {
   const preview = _lcComments.slice(0, 15);
 
   // Asignar avatares fallback SINCRÓNICAMENTE antes de renderizar
-  // (100% determinístico: mismo username → mismo género → mismo retrato siempre)
+  // lcGetGender: caché IA (si ya corrió antes) > género del comentario > detección local
   preview.forEach(c => {
     if (!_lcAvatarMap[c.username]) {
-      const gender = c.gender || lcDetectGender(c.username);
-      _lcAvatarMap[c.username] = lcGetFallbackAvatar(c.username, gender);
+      _lcAvatarMap[c.username] = lcGetFallbackAvatar(c.username, lcGetGender(c.username, c.gender));
     }
   });
 
@@ -2244,13 +2306,13 @@ async function lcAutoAssignAvatars() {
   const cfg    = lcGetConfig();
   const unique = [...new Set(_lcComments.map(c => c.username))];
 
-  // ── Fase 1: fallback inmediato con randomuser.me (sin esperar la DB) ──
-  // 100% determinístico: lcDetectGender + lcHashInt → mismo avatar siempre por username
+  // ── Fase 1: fallback inmediato con randomuser.me (sin esperar nada) ──
+  // Usa lcGetGender: caché IA > género del comentario > detección local
   let needsRender = false;
   for (const username of unique) {
     if (!_lcAvatarMap[username]) {
       const c      = _lcComments.find(x => x.username === username);
-      const gender = c?.gender || lcDetectGender(username);
+      const gender = lcGetGender(username, c?.gender);
       _lcAvatarMap[username] = lcGetFallbackAvatar(username, gender);
       needsRender = true;
     }
@@ -2260,13 +2322,38 @@ async function lcAutoAssignAvatars() {
     lcRefreshCsvPreview();
   }
 
-  // ── Fase 2: mejorar con avatares de la DB si hay (async) ──
+  // ── Fase 1.5: detección de género con IA (batch, una sola llamada) ──
+  // Solo para usernames sin género definido (filler no tiene c.gender real)
+  const needsGenderAI = unique.filter(u => {
+    const c = _lcComments.find(x => x.username === u);
+    return !c?.gender && _lcGenderCache[u] === undefined;
+  });
+  if (needsGenderAI.length) {
+    await lcDetectGendersWithAI(needsGenderAI);
+    // Re-asignar avatares con géneros IA (solo si cambia respecto al fallback local)
+    let aiUpdated = false;
+    for (const username of needsGenderAI) {
+      const aiGender = _lcGenderCache[username];
+      if (!aiGender) continue;
+      const newUrl = lcGetFallbackAvatar(username, aiGender);
+      if (_lcAvatarMap[username] !== newUrl) {
+        _lcAvatarMap[username] = newUrl;
+        aiUpdated = true;
+      }
+    }
+    if (aiUpdated) {
+      lcRenderPreviewAvatars();
+      lcRefreshCsvPreview();
+    }
+  }
+
+  // ── Fase 2: mejorar con avatares reales de la DB (async) ──
   await lcFetchDbAvatars();
   if (_lcDbAvatars?.length) {
     let dbUpdated = false;
     for (const username of unique) {
       const c        = _lcComments.find(x => x.username === username);
-      const gender   = c?.gender || lcDetectGender(username);
+      const gender   = lcGetGender(username, c?.gender);
       const ageGroup = lcDetectAgeGroup(username);
       // lcPickDbAvatarForUser usa hash → mismo username = mismo avatar DB siempre
       const dbUrl    = lcPickDbAvatarForUser(username, gender, cfg.country, ageGroup);
