@@ -2375,43 +2375,68 @@ async function lcUploadAvatar() {
   if (btn) btn.disabled = true;
   setStatus('⏳ Comprimiendo imagen...');
 
-  const file   = fileInput.files[0];
-  const safe   = country.replace(/[^a-zA-Z]/g, '');
+  const file     = fileInput.files[0];
+  const safe     = country.replace(/[^a-zA-Z]/g, '');
   const filename = `avatars/${gender}_${ageGroup}_${safe}_${Date.now()}.jpg`;
   const BUCKET   = 'fakelive-avatars';
 
+  // Helper: promesa con timeout para evitar colgar indefinidamente
+  const withTimeout = (promise, ms, label) =>
+    Promise.race([
+      promise,
+      new Promise((_, rej) => setTimeout(() => rej(new Error(`Timeout en ${label} (${ms/1000}s)`)), ms))
+    ]);
+
   try {
-    // 1. Comprimir a 200×200 JPEG q75 — reduce peso hasta 10× antes de subir
-    const compressed = await lcCompressImage(file, 200, 0.75);
-    const originalKB  = Math.round(file.size / 1024);
+    // 1. Comprimir imagen antes de subir
+    const compressed   = await lcCompressImage(file, 200, 0.75);
+    const originalKB   = Math.round(file.size / 1024);
     const compressedKB = Math.round(compressed.size / 1024);
     console.log(`[Upload] ${originalKB}KB → ${compressedKB}KB (${Math.round(compressedKB/originalKB*100)}%)`);
 
-    setStatus('⏳ Subiendo...');
+    setStatus('⏳ Subiendo al Storage...');
 
-    // 2. Crear bucket si no existe (silencia error si ya existe)
-    await sb.storage.createBucket(BUCKET, { public: true }).catch(() => {});
+    // 2. Subir imagen (timeout 15s)
+    const { error: uploadErr } = await withTimeout(
+      sb.storage.from(BUCKET).upload(filename, compressed, { contentType: 'image/jpeg', upsert: true }),
+      15000, 'Storage upload'
+    );
 
-    // 3. Subir imagen comprimida
-    const { error: uploadErr } = await sb.storage
-      .from(BUCKET)
-      .upload(filename, compressed, { contentType: 'image/jpeg', upsert: true });
-    if (uploadErr) throw new Error('Storage: ' + uploadErr.message);
+    if (uploadErr) {
+      // Errores comunes de setup
+      const msg = uploadErr.message || '';
+      if (msg.includes('Bucket not found') || msg.includes('not found')) {
+        throw new Error('El bucket "fakelive-avatars" no existe. Ejecuta la migración SQL en tu Supabase dashboard.');
+      }
+      if (msg.includes('security') || msg.includes('policy') || msg.includes('violat')) {
+        throw new Error('Sin permisos de Storage. Ejecuta la migración SQL para crear las políticas.');
+      }
+      throw new Error('Storage: ' + msg);
+    }
 
     // 3. URL pública
     const { data: urlData } = sb.storage.from(BUCKET).getPublicUrl(filename);
     const publicUrl = urlData?.publicUrl;
-    if (!publicUrl) throw new Error('No se pudo obtener la URL pública');
+    if (!publicUrl) throw new Error('No se pudo obtener URL pública del Storage');
 
-    // 4. Insertar en lc_avatars
-    const { error: dbErr } = await sb.from('lc_avatars').insert({
-      url:       publicUrl,
-      gender,
-      age_group: ageGroup,
-      country,
-      style:     'photo'
-    });
-    if (dbErr) throw new Error('DB: ' + dbErr.message);
+    setStatus('⏳ Guardando en base de datos...');
+
+    // 4. Insertar en lc_avatars (timeout 10s)
+    const { error: dbErr } = await withTimeout(
+      sb.from('lc_avatars').insert({ url: publicUrl, gender, age_group: ageGroup, country, style: 'photo' }),
+      10000, 'DB insert'
+    );
+
+    if (dbErr) {
+      const msg = dbErr.message || '';
+      if (msg.includes('does not exist') || msg.includes('relation')) {
+        throw new Error('La tabla lc_avatars no existe. Ejecuta la migración SQL en tu Supabase dashboard.');
+      }
+      if (msg.includes('security') || msg.includes('policy') || msg.includes('violat')) {
+        throw new Error('Sin permisos de INSERT. Ejecuta la migración SQL para crear las políticas RLS.');
+      }
+      throw new Error('DB: ' + msg);
+    }
 
     setStatus('✅ Avatar subido y guardado correctamente', '#00e475');
 
@@ -2431,8 +2456,8 @@ async function lcUploadAvatar() {
     lcFetchDbAvatars();
 
   } catch (e) {
-    setStatus('❌ ' + e.message, '#ff5166');
     console.error('[Upload Avatar]', e);
+    setStatus('❌ ' + e.message, '#ff5166');
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -2509,3 +2534,13 @@ document.addEventListener('DOMContentLoaded', () => {
   lcBindAll();
   lcSendConfigToServer();
 });
+
+// ── Auto-reload cuando el SW despliega versión nueva ──────
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (e.data?.type === 'SW_UPDATED') {
+      console.log('[SW] Nueva versión detectada:', e.data.version, '→ recargando...');
+      window.location.reload();
+    }
+  });
+}

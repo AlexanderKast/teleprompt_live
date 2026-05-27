@@ -1,6 +1,6 @@
 // FakeLive Pro — Service Worker (PWA offline support)
-const CACHE_NAME  = 'fakelive-pro-v10';
-const CACHE_CDN   = 'fakelive-cdn-v10';
+const CACHE_NAME  = 'fakelive-pro-v11';
+const CACHE_CDN   = 'fakelive-cdn-v11';
 
 // App shell: cached on install → instant load offline
 const APP_SHELL = [
@@ -26,20 +26,27 @@ self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => cache.addAll(APP_SHELL))
-      .then(() => self.skipWaiting())
+      .then(() => self.skipWaiting())  // activa inmediatamente sin esperar tabs cerrados
   );
 });
 
-// ── Activate: remove old caches ───────────────────────────────
+// ── Activate: limpiar caches viejos y notificar tabs para recargar ──
 self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(
+    caches.keys()
+      .then(keys => Promise.all(
         keys
           .filter(k => k !== CACHE_NAME && k !== CACHE_CDN)
           .map(k => caches.delete(k))
-      )
-    ).then(() => self.clients.claim())
+      ))
+      .then(() => self.clients.claim())
+      .then(() => {
+        // Notificar a todos los tabs abiertos → se recargan con el código nuevo
+        return self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      })
+      .then(clients => {
+        clients.forEach(client => client.postMessage({ type: 'SW_UPDATED', version: CACHE_NAME }));
+      })
   );
 });
 
@@ -73,18 +80,18 @@ self.addEventListener('fetch', event => {
         .catch(() => caches.match(event.request))
     );
   } else {
-    // App shell: cache first, network fallback + update cache
+    // App shell: network first → actualiza caché + sirve fresco
+    // (evita que un tab abierto siga con JS viejo tras un deploy)
     event.respondWith(
-      caches.match(event.request).then(cached => {
-        const networkFetch = fetch(event.request).then(response => {
+      fetch(event.request)
+        .then(response => {
           if (response.ok) {
             const clone = response.clone();
             caches.open(CACHE_NAME).then(c => c.put(event.request, clone));
           }
           return response;
-        });
-        return cached || networkFetch;
-      })
+        })
+        .catch(() => caches.match(event.request))  // sin red → caché como fallback
     );
   }
 });
