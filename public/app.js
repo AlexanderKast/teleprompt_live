@@ -1751,14 +1751,55 @@ let _lcAiFillerPool    = null;  // [] cuando la IA generó comentarios; null = n
 let _lcAiScriptKey     = '';    // hash del script para invalidar caché de IA
 let _lcAiFillerLoading = false; // lock: evita llamadas concurrentes a Gemini
 
-// ── Avatar fallback con randomuser.me (retratos reales, sin API key) ──
-// Determinístico: mismo username → mismo retrato siempre
-function lcGetFallbackAvatar(username, gender) {
+// ── Hash determinístico (mismo input → mismo número siempre) ──────
+function lcHashInt(str) {
   let h = 5381;
-  for (let i = 0; i < username.length; i++) h = (Math.imul(h, 31) + username.charCodeAt(i)) | 0;
-  const n = (Math.abs(h) % 70) + 1; // 1-70 (rango seguro de randomuser.me)
+  for (let i = 0; i < str.length; i++) h = (Math.imul(h, 31) + str.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+
+// ── Detectar género desde nombre de usuario (determinístico) ───────
+// Usa lista de nombres comunes + heurística de sufijo + hash fallback
+function lcDetectGender(username) {
+  const name = (username || '').toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '') // quitar tildes
+    .replace(/[^a-z]/g, '');                           // solo letras
+
+  const FEMALE = /^(sofia|maria|laura|ana|valentina|andrea|daniela|isabella|camila|paula|diana|monica|patricia|jessica|karen|sandra|natalia|carolina|alejandra|fernanda|gabriela|juliana|claudia|rosa|elena|teresa|carmen|lucia|sara|beatriz|luisa|adriana|vanessa|viviana|lorena|marcela|isabel|pilar|gloria|susana|veronica|mariana|paola|lina|liliana|jenny|johanna|yolanda|cristina|nathalia|tatiana|jennifer|stephanie|katherine|elizabeth|estefania|samantha|rebeca|fabiola|marcela|xiomara|milena|leidy|wendy|dayana|luz|nadia|giselle|ivonne|silvia|olga|ruth|eva|ana|ines|irene|ximena|rachel|nicole)/;
+  const MALE   = /^(carlos|juan|miguel|diego|andres|sebastian|felipe|david|jorge|luis|pedro|alberto|mario|fernando|gabriel|alejandro|roberto|ricardo|jose|antonio|manuel|francisco|eduardo|rafael|sergio|cesar|victor|oscar|ernesto|rodrigo|julian|nicolas|mauricio|camilo|santiago|daniel|steven|jhon|john|michael|james|robert|william|richard|kevin|brian|alex|ivan|nelson|wilson|henry|edgar|omar|hugo|ruben|arturo|gerardo|ernesto|raul|armando|hector|enrique|gustavo|andres|hernan|jairo|yesid|yeison|brayan|stiven|cristian|christian|jonathan|jhonatan|anderson|jefferson|esteban|mateo|samuel|simon|tomas)/;
+
+  if (FEMALE.test(name)) return 'female';
+  if (MALE.test(name))   return 'male';
+
+  // Sufijo heurístico: -ina, -ana, -ela, -ita → female; -on, -ez, -os → male
+  if (/ina$|ana$|ela$|ita$|ina$/.test(name) && name.length > 4) return 'female';
+  if (/on$|ez$|os$|us$|or$/.test(name) && name.length > 3)      return 'male';
+  // Nombre terminado en 'a' sin ser apellido corto → probable female
+  if (name.endsWith('a') && name.length > 4) return 'female';
+
+  // Fallback determinístico por hash (sin random)
+  return lcHashInt(username) % 3 !== 0 ? 'female' : 'male'; // 67% female (típico en lives)
+}
+
+// ── Avatar fallback con randomuser.me (retratos reales, sin API key) ──
+// 100% determinístico: mismo username → mismo índice → mismo retrato siempre
+function lcGetFallbackAvatar(username, gender) {
+  const n = (lcHashInt(username) % 99) + 1; // 1-99 (rango completo de randomuser.me)
   const g = gender === 'male' ? 'men' : 'women';
   return `https://randomuser.me/api/portraits/${g}/${n}.jpg`;
+}
+
+// ── Selección de avatar DB por hash (determinístico, no random) ────
+// Garantiza que cada username siempre reciba el mismo avatar de la DB
+function lcPickDbAvatarForUser(username, gender, country, ageGroup) {
+  if (!_lcDbAvatars?.length) return null;
+  // Pools en orden de preferencia (más específico → más general)
+  let pool = _lcDbAvatars.filter(a => a.gender === gender && a.country === country && a.age_group === ageGroup);
+  if (!pool.length) pool = _lcDbAvatars.filter(a => a.gender === gender && a.country === country);
+  if (!pool.length) pool = _lcDbAvatars.filter(a => a.gender === gender);
+  if (!pool.length) pool = _lcDbAvatars;
+  // Índice determinístico por username hash
+  return pool[lcHashInt(username) % pool.length]?.url || null;
 }
 
 // ── Helpers ───────────────────────────────────────────────
@@ -1972,19 +2013,6 @@ async function lcFetchDbAvatars() {
   return _lcDbAvatars;
 }
 
-// Selecciona un avatar de la DB según género, país y grupo de edad
-function lcPickDbAvatar(gender, country, ageGroup) {
-  if (!_lcDbAvatars || !_lcDbAvatars.length) return null;
-  // Intento 1: match exacto
-  let pool = _lcDbAvatars.filter(a => a.gender === gender && a.country === country && a.age_group === ageGroup);
-  // Intento 2: relajar age_group
-  if (!pool.length) pool = _lcDbAvatars.filter(a => a.gender === gender && a.country === country);
-  // Intento 3: solo género
-  if (!pool.length) pool = _lcDbAvatars.filter(a => a.gender === gender);
-  // Intento 4: cualquiera
-  if (!pool.length) pool = _lcDbAvatars;
-  return pool[Math.floor(Math.random() * pool.length)]?.url || null;
-}
 
 function lcGetConfig() {
   return {
@@ -2131,10 +2159,10 @@ function lcRenderPreview() {
   const preview = _lcComments.slice(0, 15);
 
   // Asignar avatares fallback SINCRÓNICAMENTE antes de renderizar
-  // (randomuser.me es determinístico — mismo username = mismo retrato)
+  // (100% determinístico: mismo username → mismo género → mismo retrato siempre)
   preview.forEach(c => {
     if (!_lcAvatarMap[c.username]) {
-      const gender = c.gender || (Math.random() < 0.6 ? 'female' : 'male');
+      const gender = c.gender || lcDetectGender(c.username);
       _lcAvatarMap[c.username] = lcGetFallbackAvatar(c.username, gender);
     }
   });
@@ -2217,11 +2245,12 @@ async function lcAutoAssignAvatars() {
   const unique = [...new Set(_lcComments.map(c => c.username))];
 
   // ── Fase 1: fallback inmediato con randomuser.me (sin esperar la DB) ──
+  // 100% determinístico: lcDetectGender + lcHashInt → mismo avatar siempre por username
   let needsRender = false;
   for (const username of unique) {
     if (!_lcAvatarMap[username]) {
       const c      = _lcComments.find(x => x.username === username);
-      const gender = c?.gender || (Math.random() < 0.6 ? 'female' : 'male');
+      const gender = c?.gender || lcDetectGender(username);
       _lcAvatarMap[username] = lcGetFallbackAvatar(username, gender);
       needsRender = true;
     }
@@ -2237,9 +2266,10 @@ async function lcAutoAssignAvatars() {
     let dbUpdated = false;
     for (const username of unique) {
       const c        = _lcComments.find(x => x.username === username);
-      const gender   = c?.gender || 'female';
+      const gender   = c?.gender || lcDetectGender(username);
       const ageGroup = lcDetectAgeGroup(username);
-      const dbUrl    = lcPickDbAvatar(gender, cfg.country, ageGroup);
+      // lcPickDbAvatarForUser usa hash → mismo username = mismo avatar DB siempre
+      const dbUrl    = lcPickDbAvatarForUser(username, gender, cfg.country, ageGroup);
       if (dbUrl && _lcAvatarMap[username] !== dbUrl) {
         _lcAvatarMap[username] = dbUrl;
         dbUpdated = true;
