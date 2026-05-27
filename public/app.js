@@ -1221,35 +1221,22 @@ function sbCopyTikTok() {
   navigator.clipboard.writeText(copy).then(() => showToast('¡Copiado al portapapeles! ✅'));
 }
 
-// ── SECTION 3: STREAM SETTINGS ────────────────────────────────
-const OBS_SUGGESTIONS = {
-  'YouTube Live':   'Scene recomendada en OBS: Fuente de pantalla completa + Webcam esquina inferior izquierda 200x200px + Chroma key si tienes fondo verde.',
-  'Instagram Live': 'Scene recomendada: Cuadrado 1:1 o vertical 9:16. Agrega tu logo como overlay en esquina superior. Activa el micrófono exclusivo.',
-  'TikTok Live':    'Scene recomendada: Formato vertical 9:16 — Recorta la captura a 1080x1920. Webcam centrada arriba. Baja el bitrate a 2500kbps.',
-  'Facebook Live':  'Scene recomendada: 16:9 a 1280×720 mínimo. Agrega título del live como text overlay. Usa fuente de audio de escritorio + micro.',
-  'Otro':           'Configura OBS según las especificaciones de tu plataforma. Bitrate recomendado: 2500-6000kbps para 720p/1080p.'
-};
-
+// ── SECTION 3: AJUSTES DEL TELEPROMPTER ──────────────────────
 function sbLoadStreamSettings() {
   try {
     const d = JSON.parse(localStorage.getItem(LS_STREAM) || '{}');
-    if (d.mirror     !== undefined) document.getElementById('setting-mirror').checked        = d.mirror;
-    if (d.noComments !== undefined) document.getElementById('setting-no-comments').checked   = d.noComments;
-    if (d.autoPause  !== undefined) document.getElementById('setting-auto-pause').checked    = d.autoPause;
+    if (d.mirror     !== undefined) document.getElementById('setting-mirror').checked         = d.mirror;
+    if (d.noComments !== undefined) document.getElementById('setting-no-comments').checked    = d.noComments;
+    if (d.autoPause  !== undefined) document.getElementById('setting-auto-pause').checked     = d.autoPause;
     if (d.shortcuts  !== undefined) document.getElementById('setting-show-shortcuts').checked = d.shortcuts;
-    if (d.playerBg)  {
-      document.getElementById('setting-player-bg').value = d.playerBg;
-      document.getElementById('setting-player-bg-label').textContent = d.playerBg;
+    if (d.playerBg) {
+      document.getElementById('setting-player-bg').value              = d.playerBg;
+      document.getElementById('setting-player-bg-label').textContent  = d.playerBg;
     }
-    if (d.platform)    document.getElementById('setting-platform').value    = d.platform;
-    if (d.streamKey)   document.getElementById('setting-stream-key').value  = d.streamKey;
-    if (d.serverUrl)   document.getElementById('setting-server-url').value  = d.serverUrl;
-    if (d.resolution)  document.getElementById('setting-resolution').value  = d.resolution;
     if (d.speedSlider) {
       const sl = document.getElementById('speed-slider');
       if (sl) { sl.value = d.speedSlider; document.getElementById('speed-slider-label').textContent = parseFloat(d.speedSlider).toFixed(1) + 'x'; }
     }
-    sbUpdateObsSuggestion();
     sbApplyStreamSettings();
   } catch(_) {}
 }
@@ -1261,10 +1248,6 @@ function sbSaveStreamSettings() {
     autoPause:   document.getElementById('setting-auto-pause')?.checked,
     shortcuts:   document.getElementById('setting-show-shortcuts')?.checked,
     playerBg:    document.getElementById('setting-player-bg')?.value,
-    platform:    document.getElementById('setting-platform')?.value,
-    streamKey:   document.getElementById('setting-stream-key')?.value,
-    serverUrl:   document.getElementById('setting-server-url')?.value,
-    resolution:  document.getElementById('setting-resolution')?.value,
     speedSlider: document.getElementById('speed-slider')?.value
   };
   localStorage.setItem(LS_STREAM, JSON.stringify(d));
@@ -1294,12 +1277,6 @@ function sbApplyStreamSettings() {
     const sf = document.getElementById('select-font-size');
     if (sf && sf.value !== activeSegVal) { sf.value = activeSegVal; state.settings.fontSize = activeSegVal; }
   }
-}
-
-function sbUpdateObsSuggestion() {
-  const platform = document.getElementById('setting-platform')?.value || 'Instagram Live';
-  const el = document.getElementById('obs-suggestion');
-  if (el) el.value = OBS_SUGGESTIONS[platform] || OBS_SUGGESTIONS['Otro'];
 }
 
 function sbLoadApiKeys() {
@@ -1536,12 +1513,6 @@ function sbBindAll() {
     document.getElementById('setting-player-bg-label').textContent = e.target.value;
     sbSaveStreamSettings();
   });
-  document.getElementById('setting-platform')?.addEventListener('change', () => { sbUpdateObsSuggestion(); sbSaveStreamSettings(); });
-  ['setting-stream-key','setting-server-url','setting-resolution'].forEach(id => {
-    document.getElementById(id)?.addEventListener('input', sbSaveStreamSettings);
-    document.getElementById(id)?.addEventListener('change', sbSaveStreamSettings);
-  });
-
   // Speed slider
   document.getElementById('speed-slider')?.addEventListener('input', e => {
     document.getElementById('speed-slider-label').textContent = parseFloat(e.target.value).toFixed(1) + 'x';
@@ -1557,16 +1528,6 @@ function sbBindAll() {
       if (sf) { sf.value = btn.dataset.val; sf.dispatchEvent(new Event('change')); }
       sbSaveStreamSettings();
     });
-  });
-
-  // Stream key show/hide
-  document.getElementById('btn-toggle-stream-key')?.addEventListener('click', () => {
-    const inp = document.getElementById('setting-stream-key');
-    const eye = document.getElementById('stream-key-eye');
-    if (!inp) return;
-    const isPassword = inp.type === 'password';
-    inp.type = isPassword ? 'text' : 'password';
-    if (eye) eye.textContent = isPassword ? 'visibility_off' : 'visibility';
   });
 
   // Test Gemini
