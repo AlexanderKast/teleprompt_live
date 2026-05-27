@@ -1,0 +1,89 @@
+// FakeLive Pro — Service Worker (PWA offline support)
+const CACHE_NAME  = 'fakelive-pro-v1';
+const CACHE_CDN   = 'fakelive-cdn-v1';
+
+// App shell: cached on install → instant load offline
+const APP_SHELL = [
+  '/',
+  '/index.html',
+  '/app.js',
+  '/style.css',
+  '/icon.svg',
+  '/manifest.json'
+];
+
+// CDN resources cached on first use (network-first → cache fallback)
+const CDN_PATTERNS = [
+  'cdn.tailwindcss.com',
+  'fonts.googleapis.com',
+  'fonts.gstatic.com',
+  'cdn.jsdelivr.net'          // Supabase JS SDK
+];
+
+// ── Install: pre-cache app shell ──────────────────────────────
+self.addEventListener('install', event => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(APP_SHELL))
+      .then(() => self.skipWaiting())
+  );
+});
+
+// ── Activate: remove old caches ───────────────────────────────
+self.addEventListener('activate', event => {
+  event.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(
+        keys
+          .filter(k => k !== CACHE_NAME && k !== CACHE_CDN)
+          .map(k => caches.delete(k))
+      )
+    ).then(() => self.clients.claim())
+  );
+});
+
+// ── Fetch: cache strategy ─────────────────────────────────────
+self.addEventListener('fetch', event => {
+  const url = event.request.url;
+
+  // Skip non-GET and chrome-extension
+  if (event.request.method !== 'GET') return;
+  if (url.startsWith('chrome-extension://')) return;
+
+  // Gemini API calls → always network (never cache)
+  if (url.includes('generativelanguage.googleapis.com')) return;
+
+  // Supabase → always network (auth + DB, never cache)
+  if (url.includes('supabase.co')) return;
+
+  const isCdn = CDN_PATTERNS.some(p => url.includes(p));
+
+  if (isCdn) {
+    // CDN: network first, cache as fallback
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_CDN).then(c => c.put(event.request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
+  } else {
+    // App shell: cache first, network fallback + update cache
+    event.respondWith(
+      caches.match(event.request).then(cached => {
+        const networkFetch = fetch(event.request).then(response => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then(c => c.put(event.request, clone));
+          }
+          return response;
+        });
+        return cached || networkFetch;
+      })
+    );
+  }
+});

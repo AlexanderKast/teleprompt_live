@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="90" fill="#0a0a14"/>
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff3c5a"/>
+      <stop offset="100%" stop-color="#ff8c42"/>
+    </linearGradient>
+  </defs>
+  <!-- Teleprompter lines (script) -->
+  <rect x="110" y="160" width="200" height="18" rx="9" fill="rgba(255,255,255,0.15)"/>
+  <rect x="110" y="196" width="240" height="18" rx="9" fill="rgba(255,255,255,0.15)"/>
+  <rect x="110" y="232" width="160" height="18" rx="9" fill="rgba(255,255,255,0.15)"/>
+  <!-- Active line highlight -->
+  <rect x="104" y="268" width="252" height="26" rx="7" fill="rgba(234,195,43,0.18)"/>
+  <rect x="104" y="268" width="4" height="26" rx="2" fill="#eac32b"/>
+  <rect x="116" y="272" width="230" height="18" rx="9" fill="rgba(234,195,43,0.6)"/>
+  <rect x="110" y="312" width="180" height="18" rx="9" fill="rgba(255,255,255,0.15)"/>
+  <rect x="110" y="348" width="130" height="18" rx="9" fill="rgba(255,255,255,0.15)"/>
+  <!-- LIVE badge top-right -->
+  <rect x="330" y="100" width="82" height="32" rx="8" fill="url(#grad)"/>
+  <circle cx="346" cy="116" r="6" fill="rgba(255,255,255,0.9)"/>
+  <text x="358" y="122" font-family="Arial,sans-serif" font-size="16" font-weight="800" fill="#fff" letter-spacing="1">LIVE</text>
+</svg>

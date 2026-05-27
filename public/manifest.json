@@ -1,0 +1,36 @@
+{
+  "name": "FakeLive Pro",
+  "short_name": "FakeLive",
+  "description": "Teleprompter para lives con IA — Superpowers v2",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0a0a14",
+  "theme_color": "#ff3c5a",
+  "orientation": "landscape",
+  "lang": "es",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Iniciar Prompter",
+      "short_name": "Prompter",
+      "description": "Abre el editor de guión",
+      "url": "/"
+    }
+  ]
+}

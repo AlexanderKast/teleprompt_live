@@ -1,0 +1,12 @@
+{
+  "name": "fakelive-pro",
+  "version": "1.0.0",
+  "description": "Teleprompter profesional para simulación de lives",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

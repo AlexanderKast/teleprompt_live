@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html class="dark" lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>FakeLive Pro</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="style.css"/>
+<!-- PWA -->
+<link rel="manifest" href="/manifest.json"/>
+<!-- Supabase JS SDK -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="apple-touch-icon" href="/icon.svg"/>
+<meta name="theme-color" content="#ff3c5a"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        colors: {
+          "background":               "#0a0a14",
+          "surface":                  "#12121d",
+          "surface-container-lowest": "#0d0d17",
+          "surface-container-low":    "#1b1b25",
+          "surface-container":        "#1f1f29",
+          "surface-container-high":   "#292934",
+          "surface-container-highest":"#34343f",
+          "surface-bright":           "#393844",
+          "on-surface":               "#e4e1f0",
+          "on-surface-variant":       "#e5bdbd",
+          "primary":                  "#ffb3b5",
+          "primary-container":        "#ff5166",
+          "on-primary":               "#680018",
+          "secondary":                "#eac32b",
+          "secondary-container":      "#cca800",
+          "on-secondary":             "#3b2f00",
+          "tertiary":                 "#00e475",
+          "tertiary-container":       "#00a754",
+          "on-tertiary":              "#003918",
+          "error":                    "#ffb4ab",
+          "error-container":          "#93000a",
+          "outline":                  "#ac8889",
+          "outline-variant":          "#5c3f40",
+          "on-tertiary-container":    "#003114",
+          "on-secondary-container":   "#4d3e00",
+          "on-primary-container":     "#5b0014",
+          "inverse-surface":          "#e4e1f0",
+          "inverse-on-surface":       "#302f3b"
+        },
+        borderRadius: {
+          "DEFAULT": "0.25rem",
+          "lg":      "0.5rem",
+          "xl":      "0.75rem",
+          "full":    "9999px"
+        },
+        spacing: {
+          "xs":             "4px",
+          "sm":             "8px",
+          "md":             "16px",
+          "lg":             "24px",
+          "xl":             "40px",
+          "gutter":         "24px",
+          "margin-desktop": "48px",
+          "margin-mobile":  "16px"
+        },
+        fontFamily: {
+          "headline-lg":    ["Inter"],
+          "headline-sm":    ["Inter"],
+          "body-lg":        ["Inter"],
+          "body-md":        ["Inter"],
+          "label-caps":     ["Inter"],
+          "mono-label":     ["JetBrains Mono"],
+          "mono-timer":     ["JetBrains Mono"],
+          "display-pro-md": ["JetBrains Mono"],
+          "display-pro-lg": ["JetBrains Mono"]
+        },
+        fontSize: {
+          "headline-lg":    ["32px", { lineHeight: "40px", fontWeight: "600" }],
+          "headline-sm":    ["20px", { lineHeight: "28px", fontWeight: "600" }],
+          "body-lg":        ["18px", { lineHeight: "28px", fontWeight: "400" }],
+          "body-md":        ["16px", { lineHeight: "24px", fontWeight: "400" }],
+          "label-caps":     ["12px", { lineHeight: "16px", letterSpacing: "0.1em", fontWeight: "700" }],
+          "mono-label":     ["14px", { lineHeight: "20px", letterSpacing: "0.05em", fontWeight: "500" }],
+          "mono-timer":     ["24px", { lineHeight: "32px", fontWeight: "700" }],
+          "display-pro-md": ["48px", { lineHeight: "56px", letterSpacing: "-0.01em", fontWeight: "700" }],
+          "display-pro-lg": ["72px", { lineHeight: "80px", letterSpacing: "-0.02em", fontWeight: "700" }]
+        }
+      }
+    }
+  }
+</script>
+</head>
+<body class="overflow-hidden h-screen bg-black text-on-surface font-body-md select-none">
+
+<!-- === SUPABASE v4 — Pantalla de autenticación === -->
+<div id="auth-screen">
+  <div id="auth-card">
+
+    <div class="auth-logo-area">
+      <span style="font-size:38px;display:block;">🎬</span>
+      <h1>FakeLive Pro</h1>
+      <p>Teleprompter inteligente para tus lives</p>
+    </div>
+
+    <div class="auth-tabs">
+      <button class="auth-tab auth-tab-active" data-tab="email">📧 Email</button>
+      <button class="auth-tab" data-tab="phone">📱 Teléfono</button>
+    </div>
+
+    <!-- Tab email -->
+    <div id="auth-tab-email" class="auth-tab-content">
+
+      <div id="auth-email-form">
+        <input id="auth-email-input" class="auth-input" type="email"
+               placeholder="tu@correo.com" autocomplete="email"/>
+        <button id="btn-send-magic-link" class="auth-btn-primary">✉️ Enviar enlace mágico</button>
+        <p class="auth-hint">Sin contraseña. Recibirás un link en tu correo.</p>
+      </div>
+
+      <div id="auth-email-sent" class="auth-sent-state" style="display:none;">
+        <span class="auth-sent-icon">✉️</span>
+        <h3>Revisa tu correo</h3>
+        <p>Haz clic en el enlace que te enviamos para entrar.</p>
+        <button id="btn-email-back" class="auth-btn-link">← Cambiar correo</button>
+      </div>
+    </div>
+
+    <!-- Tab teléfono -->
+    <div id="auth-tab-phone" class="auth-tab-content" style="display:none;">
+
+      <div id="auth-phone-form">
+        <input id="auth-phone-input" class="auth-input" type="tel"
+               placeholder="+57 300 123 4567" autocomplete="tel"/>
+        <button id="btn-send-phone-otp" class="auth-btn-primary">📲 Enviar código SMS</button>
+        <p class="auth-hint">Te enviaremos un código de 6 dígitos por SMS.</p>
+      </div>
+
+      <div id="auth-otp-form" style="display:none;">
+        <p style="font-size:13px;color:rgba(228,225,240,0.55);text-align:center;margin:0 0 10px;">Ingresa el código de 6 dígitos</p>
+        <input id="auth-otp-input" class="auth-input" type="number"
+               placeholder="123456" style="text-align:center;font-size:22px;letter-spacing:6px;"/>
+        <button id="btn-verify-otp" class="auth-btn-primary">✓ Verificar código</button>
+        <button id="btn-phone-back" class="auth-btn-link" style="display:block;text-align:center;margin-top:6px;">← Cambiar número</button>
+      </div>
+    </div>
+
+    <div id="auth-error"></div>
+
+    <p class="auth-skip">
+      <button id="btn-skip-auth" class="auth-btn-link">Continuar sin cuenta →</button>
+    </p>
+
+  </div>
+</div>
+<!-- /auth-screen -->
+
+<!-- === SUPERPOWERS v2 — overlays & modals === -->
+<div id="emocion-overlay">
+  <span class="sp-emoji" id="emocion-emoji">🎉</span>
+  <div class="sp-label" id="emocion-label">CELEBRAR</div>
+</div>
+
+<div id="countdown-overlay">
+  <div id="countdown-number">5</div>
+  <div id="countdown-label">Segundos restantes</div>
+</div>
+
+<div id="ai-modal">
+  <div id="ai-modal-content">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;">
+      <div>
+        <h2 style="font-size:22px;font-weight:700;color:#e4e1f0;margin:0;">Análisis del Guión</h2>
+        <p style="color:rgba(228,225,240,0.45);font-size:12px;margin:4px 0 0;">Powered by Gemini AI</p>
+      </div>
+      <button id="btn-close-ai-modal" style="background:none;border:none;color:rgba(228,225,240,0.5);cursor:pointer;padding:6px;line-height:1;">
+        <span class="material-symbols-outlined">close</span>
+      </button>
+    </div>
+    <div id="ai-modal-loading" style="display:none;text-align:center;padding:44px 0;">
+      <span class="material-symbols-outlined animate-blink" style="font-size:48px;color:#ff5166;">psychology</span>
+      <p style="margin-top:16px;color:rgba(228,225,240,0.5);font-size:14px;">Analizando con Gemini...</p>
+    </div>
+    <div id="ai-modal-result"></div>
+  </div>
+</div>
+<!-- /SUPERPOWERS overlays -->
+
+<!-- ============================================================
+     PANTALLA 1 — EDITOR (sidebar + sections)
+     ============================================================ -->
+<div id="editor-screen" class="screen active">
+
+  <!-- ======= SIDEBAR (220px) ======= -->
+  <nav id="app-sidebar">
+
+    <div id="sb-logo-area">
+      <span id="sb-logo">FakeLive Pro</span>
+      <div id="sb-live-badge">
+        <span class="sb-live-dot"></span>EN VIVO
+      </div>
+    </div>
+
+    <ul id="sb-nav-list">
+      <li class="sb-nav-item sb-nav-active" data-section="prompter">
+        <span class="sb-nav-icon">🎬</span>
+        <span class="sb-nav-label">Prompter</span>
+      </li>
+      <li class="sb-nav-item" data-section="metadata">
+        <span class="sb-nav-icon">🏷️</span>
+        <span class="sb-nav-label">Metadata</span>
+      </li>
+      <li class="sb-nav-item" data-section="settings">
+        <span class="sb-nav-icon">⚙️</span>
+        <span class="sb-nav-label">Stream Settings</span>
+      </li>
+      <li class="sb-nav-item" data-section="historial">
+        <span class="sb-nav-icon">📂</span>
+        <span class="sb-nav-label">Historial</span>
+      </li>
+      <li class="sb-nav-item" data-section="ayuda">
+        <span class="sb-nav-icon">❓</span>
+        <span class="sb-nav-label">Ayuda</span>
+      </li>
+    </ul>
+
+    <div id="sb-footer">
+      <!-- Tarjeta de usuario (visible solo cuando hay sesión activa) -->
+      <div id="sb-user-card" style="display:none;">
+        <span class="sb-user-avatar">👤</span>
+        <div class="sb-user-details">
+          <span id="sb-user-info-text">—</span>
+          <span class="sb-user-sync">☁️ Sincronizado</span>
+        </div>
+        <button id="btn-sb-signout" title="Cerrar sesión">Salir</button>
+      </div>
+      <span id="sb-version">v3.0 — Supabase</span>
+      <button id="btn-start-live-sb">▶ Iniciar Live</button>
+    </div>
+
+  </nav>
+  <!-- /sidebar -->
+
+  <!-- ======= MAIN CONTENT ======= -->
+  <div id="main-content">
+
+    <!-- ─── SECTION 1: PROMPTER ─── -->
+    <div id="section-prompter" class="content-section sb-section-active">
+      <div class="sb-section-hdr">
+        <div>
+          <h2 class="sb-section-title">Prompter</h2>
+          <p class="sb-section-sub">Editor de guión del live</p>
+        </div>
+      </div>
+
+      <div class="prompter-layout">
+
+        <!-- Left: script textarea -->
+        <div class="prompter-main">
+          <div class="textarea-wrap">
+            <div class="textarea-topbar"></div>
+            <textarea id="script-textarea" spellcheck="false"
+              placeholder="00:00 [GUION] Bienvenidos a este live...
+00:20 [COMENTARIO] Carlos_Medellin: ¿cuánto se gana?
+00:23 [RESPONDER] Carlos, depende del producto...
+00:30 [ACCION] Mostrar pantalla con resultados
+00:45 [MOSTRAR] Mostrar imagen de ganancias
+01:00 [PAUSA] Pausa para leer comentarios
+00:05 [EMOCION] ENERGIA
+01:00 [COUNTDOWN] 5"
+            ></textarea>
+            <div class="script-statusbar">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <span class="material-symbols-outlined" style="font-size:14px;">description</span>
+                <span id="block-count">0 bloques</span>
+                <span style="opacity:0.3;">·</span>
+                <span class="material-symbols-outlined" style="font-size:14px;">cloud_done</span>
+                <span>Auto-guardado</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:5px;color:#00e475;">
+                <span class="material-symbols-outlined" style="font-size:15px;">check_circle</span>
+                <span>Listo</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: controls panel -->
+        <div class="prompter-controls">
+
+          <!-- Settings mini-card -->
+          <div class="sb-card">
+            <div class="sb-card-title">
+              <span class="material-symbols-outlined" style="font-size:16px;color:#eac32b;">settings_suggest</span>
+              Ajustes del Prompter
+            </div>
+            <div class="sb-field-group">
+              <label class="sb-label">Tamaño de fuente</label>
+              <div style="position:relative;">
+                <select id="select-font-size" class="sb-select">
+                  <option value="small">Pequeño (20px)</option>
+                  <option value="medium" selected>Normal (32px)</option>
+                  <option value="large">Grande (48px)</option>
+                  <option value="xlarge">Extra Grande (60px)</option>
+                </select>
+                <span class="material-symbols-outlined sb-select-icon">expand_more</span>
+              </div>
+            </div>
+            <div class="sb-field-group">
+              <label class="sb-label">Velocidad de avance</label>
+              <div style="position:relative;">
+                <select id="select-speed" class="sb-select">
+                  <option value="slow">Lento (0.75×)</option>
+                  <option value="normal" selected>Normal (1.0×)</option>
+                  <option value="fast">Rápido (1.5×)</option>
+                </select>
+                <span class="material-symbols-outlined sb-select-icon">expand_more</span>
+              </div>
+            </div>
+            <div class="sb-field-group">
+              <label class="sb-label">Modo comentarios</label>
+              <div style="position:relative;">
+                <select id="select-comment-mode" class="sb-select">
+                  <option value="side" selected>Panel Lateral</option>
+                  <option value="bottom">Barra Inferior</option>
+                  <option value="both">Ambos</option>
+                </select>
+                <span class="material-symbols-outlined sb-select-icon">expand_more</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Action buttons -->
+          <button id="btn-start-live" class="sb-btn-primary">
+            <span class="material-symbols-outlined" style="font-size:20px;">play_circle</span>
+            ▶ Iniciar Live
+          </button>
+          <div style="display:flex;gap:8px;">
+            <button id="btn-load-demo" class="sb-btn-secondary" style="flex:1;">
+              <span class="material-symbols-outlined" style="font-size:15px;">upload_file</span>
+              Cargar Demo
+            </button>
+            <button id="btn-save-as" class="sb-btn-secondary" style="flex:1;">
+              💾 Guardar como...
+            </button>
+          </div>
+
+          <!-- AI Comment Generator (Superpowers v2) -->
+          <div class="sb-card" style="padding:14px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+              <div style="display:flex;align-items:center;gap:7px;color:#ffb3b5;">
+                <span class="material-symbols-outlined" style="font-size:17px;">smart_toy</span>
+                <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;">Comentarios IA</span>
+              </div>
+              <button id="btn-toggle-ai-card" style="background:none;border:none;cursor:pointer;color:rgba(228,225,240,0.4);padding:2px;line-height:1;">
+                <span class="material-symbols-outlined" id="ai-card-chevron">expand_more</span>
+              </button>
+            </div>
+            <div id="ai-comment-body" style="display:none;">
+              <textarea id="ai-topic-input" rows="2" placeholder="Tema del live (ej: dropshipping, fitness)..." class="sb-textarea" style="font-size:12px;margin-bottom:8px;"></textarea>
+              <button id="btn-generate-comments" class="sb-btn-ai" style="margin-bottom:6px;width:100%;">
+                <span class="material-symbols-outlined" style="font-size:15px;">auto_awesome</span>
+                Generar comentarios
+              </button>
+              <div id="ai-comments-output" style="display:none;">
+                <textarea id="ai-comments-result" rows="5" readonly class="sb-textarea" style="font-family:'JetBrains Mono',monospace;font-size:11px;margin-bottom:6px;"></textarea>
+                <button id="btn-insert-comments" class="sb-btn-teal" style="width:100%;">
+                  <span class="material-symbols-outlined" style="font-size:14px;">add</span>
+                  Insertar en guión
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Analyze script button (Superpowers v2) -->
+          <button id="btn-analyze-script" class="sb-btn-ghost-primary">
+            <span class="material-symbols-outlined" style="font-size:16px;">psychology</span>
+            Analizar guión con IA
+          </button>
+
+        </div>
+        <!-- /controls -->
+
+      </div>
+      <!-- /prompter-layout -->
+    </div>
+    <!-- /section-prompter -->
+
+
+    <!-- ─── SECTION 2: METADATA ─── -->
+    <div id="section-metadata" class="content-section">
+      <div class="sb-section-hdr">
+        <h2 class="sb-section-title">Metadata</h2>
+        <p class="sb-section-sub">Información del live para plataformas</p>
+      </div>
+      <div class="sb-cards-col">
+
+        <!-- Card: Datos del live -->
+        <div class="sb-card">
+          <div class="sb-card-title">
+            <span class="material-symbols-outlined" style="font-size:16px;color:#ffb3b5;">live_tv</span>
+            Datos del Live
+          </div>
+
+          <div class="sb-field-group">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;">
+              <label class="sb-label">Título del live</label>
+              <span id="meta-titulo-count" style="font-size:10px;color:rgba(228,225,240,0.4);">0/100</span>
+            </div>
+            <input id="meta-titulo" type="text" maxlength="100" placeholder="Ej: Cómo gané $3000 con dropshipping desde Colombia" class="sb-input"/>
+          </div>
+
+          <div class="sb-field-group">
+            <label class="sb-label">Descripción</label>
+            <div style="display:flex;gap:8px;align-items:flex-start;">
+              <textarea id="meta-desc" rows="4" placeholder="Descripción del live para YouTube/TikTok..." class="sb-textarea" style="flex:1;"></textarea>
+              <button id="btn-gen-desc" class="sb-ai-btn-sm" title="Generar descripción con IA">
+                <span class="material-symbols-outlined" style="font-size:15px;">auto_awesome</span>
+                <span style="font-size:10px;">IA</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="sb-field-group">
+            <label class="sb-label">Hashtags</label>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input id="meta-hashtags" type="text" placeholder="#dropshipping #ecommerce #negocios..." class="sb-input" style="flex:1;"/>
+              <button id="btn-gen-hashtags" class="sb-ai-btn-sm" title="Generar hashtags con IA">
+                <span class="material-symbols-outlined" style="font-size:15px;">auto_awesome</span>
+                <span style="font-size:10px;">IA</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="sb-field-group">
+            <label class="sb-label">Plataformas objetivo</label>
+            <div style="display:flex;gap:20px;flex-wrap:wrap;margin-top:6px;">
+              <label class="sb-check-label"><input type="checkbox" id="meta-plat-youtube" class="sb-check"/> YouTube</label>
+              <label class="sb-check-label"><input type="checkbox" id="meta-plat-tiktok" class="sb-check"/> TikTok</label>
+              <label class="sb-check-label"><input type="checkbox" id="meta-plat-instagram" class="sb-check" checked/> Instagram</label>
+              <label class="sb-check-label"><input type="checkbox" id="meta-plat-facebook" class="sb-check"/> Facebook</label>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:12px;">
+            <div class="sb-field-group" style="flex:1;">
+              <label class="sb-label">Categoría</label>
+              <div style="position:relative;">
+                <select id="meta-categoria" class="sb-select">
+                  <option>Negocios digitales</option>
+                  <option>Dropshipping</option>
+                  <option>Ecommerce</option>
+                  <option>Marketing</option>
+                  <option>Emprendimiento</option>
+                  <option>Finanzas</option>
+                </select>
+                <span class="material-symbols-outlined sb-select-icon">expand_more</span>
+              </div>
+            </div>
+            <div class="sb-field-group" style="flex:1;">
+              <label class="sb-label">Idioma</label>
+              <div style="position:relative;">
+                <select id="meta-idioma" class="sb-select">
+                  <option>Español</option>
+                  <option selected>Español (Colombia)</option>
+                  <option>Español (México)</option>
+                  <option>Español (Ecuador)</option>
+                </select>
+                <span class="material-symbols-outlined sb-select-icon">expand_more</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:8px;margin-top:8px;">
+            <button id="btn-copy-youtube" class="sb-btn-copy" style="flex:1;">
+              <span class="material-symbols-outlined" style="font-size:14px;">content_copy</span>
+              Copiar para YouTube
+            </button>
+            <button id="btn-copy-tiktok" class="sb-btn-copy" style="flex:1;">
+              <span class="material-symbols-outlined" style="font-size:14px;">content_copy</span>
+              Copiar para TikTok
+            </button>
+          </div>
+        </div>
+
+        <!-- Card: Creator profile -->
+        <div class="sb-card">
+          <div class="sb-card-title">
+            <span class="material-symbols-outlined" style="font-size:16px;color:#00e475;">person</span>
+            Perfil del Creador
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="sb-field-group">
+              <label class="sb-label">Nombre / Marca</label>
+              <input id="profile-nombre" type="text" placeholder="Tu nombre o marca" class="sb-input"/>
+            </div>
+            <div class="sb-field-group">
+              <label class="sb-label">Nicho principal</label>
+              <input id="profile-nicho" type="text" placeholder="Dropshipping, fitness..." class="sb-input"/>
+            </div>
+            <div class="sb-field-group">
+              <label class="sb-label">Instagram</label>
+              <input id="profile-instagram" type="text" placeholder="@tu_usuario" class="sb-input"/>
+            </div>
+            <div class="sb-field-group">
+              <label class="sb-label">TikTok</label>
+              <input id="profile-tiktok" type="text" placeholder="@tu_usuario" class="sb-input"/>
+            </div>
+            <div class="sb-field-group" style="grid-column:span 2;">
+              <label class="sb-label">WhatsApp de ventas</label>
+              <input id="profile-whatsapp" type="text" placeholder="+57 300 000 0000" class="sb-input"/>
+            </div>
+          </div>
+          <div class="sb-field-group" style="margin-top:4px;">
+            <label class="sb-label">Frase de cierre del live (se inserta como último bloque al iniciar)</label>
+            <textarea id="profile-cierre" rows="2" placeholder="Ej: ¡Muchísimas gracias! Sígueme para más contenido. Escríbeme al DM con DROPSHIP." class="sb-textarea"></textarea>
+          </div>
+        </div>
+
+      </div>
+    </div>
+    <!-- /section-metadata -->
+
+
+    <!-- ─── SECTION 3: STREAM SETTINGS ─── -->
+    <div id="section-settings" class="content-section">
+      <div class="sb-section-hdr">
+        <h2 class="sb-section-title">Stream Settings</h2>
+        <p class="sb-section-sub">Configuración del teleprompter y plataformas</p>
+      </div>
+      <div class="sb-cards-col">
+
+        <!-- Card 1: Teleprompter settings -->
+        <div class="sb-card">
+          <div class="sb-card-title">
+            <span class="material-symbols-outlined" style="font-size:16px;color:#eac32b;">tune</span>
+            Ajustes del Teleprompter
+          </div>
+
+          <div class="sb-field-group">
+            <label class="sb-label">Tamaño de texto</label>
+            <div id="segmented-fontsize" class="sb-segmented">
+              <button class="sb-seg-btn" data-val="small">S</button>
+              <button class="sb-seg-btn sb-seg-active" data-val="medium">M</button>
+              <button class="sb-seg-btn" data-val="large">L</button>
+              <button class="sb-seg-btn" data-val="xlarge">XL</button>
+            </div>
+          </div>
+
+          <div class="sb-field-group">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <label class="sb-label" style="margin:0;">Velocidad de avance</label>
+              <span id="speed-slider-label" style="font-size:12px;font-weight:700;color:#eac32b;font-family:'JetBrains Mono',monospace;">1.0x</span>
+            </div>
+            <input id="speed-slider" type="range" min="0.5" max="2.0" step="0.1" value="1.0" class="sb-slider"/>
+          </div>
+
+          <div class="sb-toggle-row">
+            <span class="sb-toggle-label">Modo espejo (flip horizontal)</span>
+            <label class="sb-toggle"><input type="checkbox" id="setting-mirror"/><span class="sb-toggle-track"></span></label>
+          </div>
+          <div class="sb-toggle-row">
+            <span class="sb-toggle-label">Modo sin comentarios (pantalla completa)</span>
+            <label class="sb-toggle"><input type="checkbox" id="setting-no-comments"/><span class="sb-toggle-track"></span></label>
+          </div>
+          <div class="sb-toggle-row">
+            <span class="sb-toggle-label">Auto-pausar en [PAUSA]</span>
+            <label class="sb-toggle"><input type="checkbox" id="setting-auto-pause"/><span class="sb-toggle-track"></span></label>
+          </div>
+          <div class="sb-toggle-row">
+            <span class="sb-toggle-label">Mostrar atajos en el player</span>
+            <label class="sb-toggle"><input type="checkbox" id="setting-show-shortcuts" checked/><span class="sb-toggle-track"></span></label>
+          </div>
+
+          <div class="sb-field-group">
+            <label class="sb-label">Color de fondo del player</label>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <input id="setting-player-bg" type="color" value="#000000" style="width:40px;height:32px;border:1px solid rgba(255,255,255,0.1);border-radius:6px;cursor:pointer;background:none;padding:2px;"/>
+              <span id="setting-player-bg-label" style="font-size:12px;font-family:'JetBrains Mono',monospace;color:rgba(228,225,240,0.6);">#000000</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 2: Platform config -->
+        <div class="sb-card">
+          <div class="sb-card-title">
+            <span class="material-symbols-outlined" style="font-size:16px;color:#ffb3b5;">broadcast_on_home</span>
+            Configuración de Plataforma
+          </div>
+
+          <div class="sb-field-group">
+            <label class="sb-label">Plataforma principal</label>
+            <div style="position:relative;">
+              <select id="setting-platform" class="sb-select">
+                <option>YouTube Live</option>
+                <option selected>Instagram Live</option>
+                <option>TikTok Live</option>
+                <option>Facebook Live</option>
+                <option>Otro</option>
+              </select>
+              <span class="material-symbols-outlined sb-select-icon">expand_more</span>
+            </div>
+          </div>
+
+          <div class="sb-field-group">
+            <label class="sb-label">Stream Key (RTMP)</label>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input id="setting-stream-key" type="password" placeholder="xxxx-xxxx-xxxx-xxxx" class="sb-input" style="flex:1;"/>
+              <button id="btn-toggle-stream-key" style="background:none;border:none;cursor:pointer;color:rgba(228,225,240,0.5);padding:4px;line-height:1;" title="Mostrar/ocultar">
+                <span class="material-symbols-outlined" style="font-size:18px;" id="stream-key-eye">visibility</span>
+              </button>
+            </div>
+            <p style="font-size:10px;color:#ffb4ab;margin-top:4px;">⚠️ Nunca compartas tu stream key. Solo se guarda localmente.</p>
+          </div>
+
+          <div class="sb-field-group">
+            <label class="sb-label">Server URL</label>
+            <input id="setting-server-url" type="text" placeholder="rtmp://a.rtmp.youtube.com/live2" class="sb-input"/>
+          </div>
+
+          <div class="sb-field-group">
+            <label class="sb-label">Resolución objetivo</label>
+            <div style="position:relative;">
+              <select id="setting-resolution" class="sb-select">
+                <option>1920x1080 (Full HD)</option>
+                <option selected>1280x720 (HD)</option>
+                <option>854x480 (SD)</option>
+              </select>
+              <span class="material-symbols-outlined sb-select-icon">expand_more</span>
+            </div>
+          </div>
+
+          <div class="sb-field-group">
+            <label class="sb-label">Sugerencia para OBS</label>
+            <textarea id="obs-suggestion" rows="3" readonly class="sb-textarea" style="font-size:12px;color:rgba(228,225,240,0.65);resize:none;cursor:default;"></textarea>
+          </div>
+        </div>
+
+        <!-- Card 3: API Keys -->
+        <div class="sb-card">
+          <div class="sb-card-title">
+            <span class="material-symbols-outlined" style="font-size:16px;color:#ffb3b5;">key</span>
+            API Keys
+          </div>
+          <div class="sb-field-group">
+            <label class="sb-label">Gemini API Key</label>
+            <input id="gemini-key-input" type="password" placeholder="AIza..." autocomplete="off" class="sb-input"/>
+            <p style="font-size:10px;color:rgba(228,225,240,0.4);margin-top:4px;">
+              Guardado localmente en tu dispositivo.
+              <a href="https://aistudio.google.com" target="_blank" style="color:#ffb3b5;text-decoration:underline;">Obtén tu clave gratuita en aistudio.google.com →</a>
+            </p>
+          </div>
+          <button id="btn-test-gemini" class="sb-btn-secondary" style="width:100%;">
+            🧪 Probar conexión
+          </button>
+          <div id="gemini-test-result" style="display:none;margin-top:10px;font-size:12px;padding:10px 12px;border-radius:8px;"></div>
+        </div>
+
+      </div>
+    </div>
+    <!-- /section-settings -->
+
+
+    <!-- ─── SECTION 4: HISTORIAL ─── -->
+    <div id="section-historial" class="content-section">
+      <div class="sb-section-hdr">
+        <h2 class="sb-section-title">Historial</h2>
+        <p class="sb-section-sub">Guiones guardados y sesiones recientes</p>
+      </div>
+      <div class="sb-cards-col">
+
+        <div class="sb-card">
+          <div class="sb-card-title">
+            <span class="material-symbols-outlined" style="font-size:16px;color:#eac32b;">folder</span>
+            Guiones Guardados
+          </div>
+          <div id="saved-scripts-list"></div>
+        </div>
+
+        <div class="sb-card">
+          <div class="sb-card-title">
+            <span class="material-symbols-outlined" style="font-size:16px;color:#00e475;">history</span>
+            Historial de Sesiones
+          </div>
+          <div id="sessions-list"></div>
+        </div>
+
+      </div>
+    </div>
+    <!-- /section-historial -->
+
+
+    <!-- ─── SECTION 5: AYUDA ─── -->
+    <div id="section-ayuda" class="content-section">
+      <div class="sb-section-hdr">
+        <h2 class="sb-section-title">Ayuda</h2>
+        <p class="sb-section-sub">Guía de uso y referencia de comandos</p>
+      </div>
+      <div class="sb-cards-col" style="max-width:720px;">
+
+        <div class="sb-accordion">
+          <button class="sb-acc-hdr sb-acc-open" data-acc="acc1">
+            <span>📋 Formato del guion</span>
+            <span class="material-symbols-outlined sb-acc-chevron">expand_less</span>
+          </button>
+          <div id="acc1" class="sb-acc-body">
+<pre class="sb-code-block">MM:SS [TIPO] Contenido
+
+TIPOS DISPONIBLES:
+──────────────────────────────
+[GUION]      Lo que vas a decir. Texto en blanco.
+[COMENTARIO] NombreUsuario_Ciudad: mensaje del comentario
+[RESPONDER]  Lo que debes decir al responder el comentario
+[ACCION]     Instrucción de actuación: sonreír, moverse, tomar agua
+[MOSTRAR]    Qué mostrar en cámara o pantalla
+[PAUSA]      Marca una pausa. El timer puede auto-pausar aquí.
+[EMOCION]    Una de: CELEBRAR / INTRIGA / URGENCIA / SORPRESA / ENERGIA / REFLEXION / LLAMADA
+[COUNTDOWN]  Un número: 3, 5 o 10 — lanza cuenta regresiva animada
+
+EJEMPLO:
+──────────────────────────────
+00:00 [GUION] Buenas noches familia, bienvenidos al live...
+00:20 [ACCION] Sonreír, saludar con la mano
+00:30 [EMOCION] ENERGIA
+01:00 [COMENTARIO] Carlos_Medellin: ¿Cuánto se puede ganar?
+01:00 [RESPONDER] Carlos, con el sistema correcto entre $3000 y $5000
+01:30 [MOSTRAR] Pantalla con resultados del mes pasado
+02:00 [COUNTDOWN] 5
+02:10 [GUION] Ahora sí, vamos a lo que vinieron a ver...
+03:00 [PAUSA] Tomar agua, respirar</pre>
+          </div>
+        </div>
+
+        <div class="sb-accordion">
+          <button class="sb-acc-hdr" data-acc="acc2">
+            <span>⌨️ Atajos de teclado</span>
+            <span class="material-symbols-outlined sb-acc-chevron">expand_more</span>
+          </button>
+          <div id="acc2" class="sb-acc-body" style="display:none;">
+            <table class="sb-table">
+              <tr><th>Tecla</th><th>Acción</th></tr>
+              <tr><td>Espacio</td><td>Pausar / Reanudar</td></tr>
+              <tr><td>→ (flecha derecha)</td><td>Siguiente bloque</td></tr>
+              <tr><td>← (flecha izquierda)</td><td>Bloque anterior</td></tr>
+              <tr><td>Esc</td><td>Salir al editor</td></tr>
+              <tr><td>F</td><td>Pantalla completa del navegador</td></tr>
+            </table>
+          </div>
+        </div>
+
+        <div class="sb-accordion">
+          <button class="sb-acc-hdr" data-acc="acc3">
+            <span>🤖 Cómo usar la IA</span>
+            <span class="material-symbols-outlined sb-acc-chevron">expand_more</span>
+          </button>
+          <div id="acc3" class="sb-acc-body" style="display:none;">
+            <div class="sb-help-text">
+              <p><strong>Generador de comentarios</strong><br/>Agrega tu API key en Stream Settings → API Keys. En Prompter, escribe el tema del live y presiona "Generar comentarios con IA". Los comentarios se insertan automáticamente con timestamps correctos.</p>
+              <p><strong>Analizador de guion</strong><br/>Con tu guion listo, presiona "Analizar guion con IA". Recibirás una puntuación del 1 al 10, fortalezas, zonas de riesgo y sugerencias específicas.</p>
+              <p><strong>Metadata con IA</strong><br/>En Metadata, usa los botones "✨ IA" para generar automáticamente la descripción y los hashtags optimizados para tu plataforma.</p>
+              <p><strong>Clave de Gemini gratuita</strong><br/>Ve a <a href="https://aistudio.google.com" target="_blank" style="color:#ffb3b5;">aistudio.google.com</a> → "Get API Key" → crea una clave gratuita → pégala en Stream Settings → API Keys.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sb-accordion">
+          <button class="sb-acc-hdr" data-acc="acc4">
+            <span>🚀 Tips para un live más efectivo</span>
+            <span class="material-symbols-outlined sb-acc-chevron">expand_more</span>
+          </button>
+          <div id="acc4" class="sb-acc-body" style="display:none;">
+            <ul class="sb-tips-list">
+              <li>🎯 Coloca tu primer [COMENTARIO] antes del minuto 2. La audiencia necesita ver actividad desde el inicio.</li>
+              <li>⚡ Usa [EMOCION] URGENCIA solo 1 o 2 veces por live. Si lo abusas, pierde impacto.</li>
+              <li>🔄 Alterna entre [GUION], [ACCION] y [COMENTARIO] cada 45-60 segundos para mantener dinamismo.</li>
+              <li>💬 Los mejores comentarios son los de objeción. "No tengo dinero", "No sé nada de esto" — respóndelos en el live.</li>
+              <li>⏱ Un [COUNTDOWN] en el minuto 1 aumenta la retención inicial. La gente se queda a ver qué pasa.</li>
+              <li>🎭 El bloque [EMOCION] REFLEXION es poderoso justo antes de tu llamada a la acción.</li>
+              <li>📱 Ensaya el live completo en modo privado al menos una vez antes de grabar el fake live final.</li>
+              <li>🏆 El objetivo no es la perfección — es que parezca real. Los errores pequeños ayudan a la autenticidad.</li>
+            </ul>
+          </div>
+        </div>
+
+      </div>
+    </div>
+    <!-- /section-ayuda -->
+
+  </div>
+  <!-- /main-content -->
+
+</div>
+<!-- /editor-screen -->
+
+
+<!-- ============================================================
+     PANTALLA 2 — PLAYER (TELEPROMPTER)
+     ============================================================ -->
+<div id="player-screen" class="screen bg-black">
+
+  <!-- Status bar -->
+  <header class="h-[52px] bg-surface-container-low border-b border-white/10 flex items-center justify-between px-gutter z-50 flex-shrink-0">
+    <div class="flex items-center gap-lg">
+      <div class="flex items-center gap-sm">
+        <span class="w-3 h-3 bg-error rounded-full animate-blink flex-shrink-0"></span>
+        <span class="font-label-caps text-label-caps text-error">EN VIVO</span>
+      </div>
+      <div id="live-timer" class="font-mono-timer text-white tabular-nums" style="font-size:22px;letter-spacing:2px;">00:00</div>
+    </div>
+
+    <div class="flex-1 max-w-xl mx-10 flex items-center gap-md min-w-0">
+      <div class="flex-1 h-1 bg-white/10 rounded-full overflow-hidden flex-shrink-0">
+        <div id="progress-fill" class="h-full bg-gradient-to-r from-primary to-secondary transition-all duration-300" style="width:0%"></div>
+      </div>
+      <div id="next-preview" class="hidden lg:block truncate text-on-surface-variant font-mono-label text-[12px] min-w-0">—</div>
+    </div>
+
+    <div class="flex items-center gap-sm flex-shrink-0">
+      <button id="btn-pause-resume" class="flex items-center gap-xs px-3 py-1.5 rounded hover:bg-white/10 text-on-surface transition-colors">
+        <span class="material-symbols-outlined text-[20px]">pause</span>
+        <span class="font-label-caps text-[11px]">Pausar</span>
+      </button>
+      <button id="btn-next-block" class="flex items-center gap-xs px-3 py-1.5 rounded hover:bg-white/10 text-on-surface transition-colors">
+        <span class="material-symbols-outlined text-[20px]">skip_next</span>
+        <span class="font-label-caps text-[11px]">Siguiente</span>
+      </button>
+      <button id="btn-prev-block" class="flex items-center gap-xs px-3 py-1.5 rounded hover:bg-white/10 text-on-surface transition-colors">
+        <span class="material-symbols-outlined text-[20px]">skip_previous</span>
+        <span class="font-label-caps text-[11px]">Atrás</span>
+      </button>
+      <div class="w-px h-6 bg-white/10 mx-1"></div>
+      <button id="btn-retention-toggle" class="flex items-center gap-xs px-3 py-1.5 rounded hover:bg-white/10 text-on-surface-variant transition-colors" title="Panel de retención">
+        <span class="material-symbols-outlined text-[20px]">analytics</span>
+        <span class="font-label-caps text-[11px]">Alertas</span>
+      </button>
+      <div class="w-px h-6 bg-white/10 mx-1"></div>
+      <button id="btn-exit" class="p-1.5 rounded hover:bg-error/20 text-on-surface hover:text-error transition-colors">
+        <span class="material-symbols-outlined text-[20px]">close</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Player body -->
+  <main class="flex flex-1 overflow-hidden">
+    <section class="w-[70%] relative flex flex-col bg-black overflow-hidden">
+      <div class="absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-32 bg-primary rounded-r-full z-10 pointer-events-none" style="box-shadow:0 0 20px rgba(255,179,181,0.5)"></div>
+      <div id="blocks-container" class="flex-1 overflow-y-auto script-scroll-mask fsize-medium"></div>
+    </section>
+    <aside id="comments-panel" class="w-[30%] bg-surface-container-low border-l border-white/10 flex flex-col overflow-hidden">
+      <div class="p-md flex items-center justify-between border-b border-white/5 flex-shrink-0">
+        <div class="flex items-center gap-sm">
+          <span class="material-symbols-outlined text-tertiary">forum</span>
+          <span class="font-label-caps text-label-caps text-on-surface">Comentarios del live</span>
+        </div>
+        <span id="comments-count" class="bg-tertiary/20 text-tertiary text-[10px] font-bold px-2 py-0.5 rounded-full">0</span>
+      </div>
+      <div id="comments-feed" class="flex-1 overflow-y-auto p-md flex flex-col gap-md"></div>
+      <div class="p-md bg-surface-container-lowest border-t border-white/10 flex-shrink-0">
+        <div class="flex items-center gap-sm mb-sm text-secondary">
+          <span class="material-symbols-outlined text-[18px]">play_circle</span>
+          <span class="font-label-caps text-[11px]">Ahora mismo</span>
+        </div>
+        <p id="now-playing-text" class="text-[13px] font-bold text-on-surface italic leading-snug">—</p>
+      </div>
+    </aside>
+  </main>
+
+  <!-- SUPERPOWERS v2 — retention panel -->
+  <div id="retention-panel" class="sp-hidden">
+    <div id="retention-panel-header">
+      <span class="material-symbols-outlined" style="font-size:15px;color:#eac32b;">analytics</span>
+      <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:rgba(228,225,240,0.65);">Alertas de Retención</span>
+    </div>
+    <div id="retention-alerts-list"></div>
+  </div>
+
+  <!-- Bottom overlay (comment floating card) -->
+  <div id="bottom-overlay" class="fixed bottom-12 left-margin-desktop z-40 hidden">
+    <div class="bg-surface-container-lowest/90 backdrop-blur-md border-2 border-tertiary p-md rounded-xl flex items-center gap-md max-w-md shadow-2xl">
+      <div class="w-10 h-10 rounded-full bg-tertiary text-on-tertiary flex items-center justify-center text-[13px] font-bold flex-shrink-0">
+        <span class="material-symbols-outlined text-[18px]">person</span>
+      </div>
+      <div class="min-w-0 flex-1">
+        <div id="overlay-user" class="font-label-caps text-tertiary text-[10px] mb-xs">@usuario</div>
+        <p id="overlay-msg" class="text-on-surface font-semibold text-[15px] truncate">mensaje</p>
+      </div>
+      <button onclick="document.getElementById('bottom-overlay').classList.add('hidden')" class="ml-auto text-on-surface-variant hover:text-white flex-shrink-0">
+        <span class="material-symbols-outlined">close</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="h-8 bg-surface-container-lowest border-t border-white/5 flex justify-center items-center px-4 z-50 flex-shrink-0">
+    <div class="font-mono-label text-[11px] text-on-surface-variant/60 flex items-center gap-lg">
+      <span><span class="text-secondary">Espacio:</span> Pausar</span>
+      <span class="w-1 h-1 bg-white/20 rounded-full"></span>
+      <span><span class="text-secondary">→</span> Siguiente</span>
+      <span class="w-1 h-1 bg-white/20 rounded-full"></span>
+      <span><span class="text-secondary">←</span> Atrás</span>
+      <span class="w-1 h-1 bg-white/20 rounded-full"></span>
+      <span><span class="text-secondary">Esc:</span> Salir</span>
+    </div>
+  </footer>
+
+</div>
+<!-- /player-screen -->
+
+<script src="app.js"></script>
+<script src="auth.js"></script>
+<script>
+  // PWA — Service Worker registration
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js')
+        .then(reg => console.log('[SW] Registrado:', reg.scope))
+        .catch(err => console.warn('[SW] Error:', err));
+    });
+  }
+</script>
+</body>
+</html>
