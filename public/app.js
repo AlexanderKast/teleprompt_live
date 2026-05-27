@@ -2767,3 +2767,374 @@ if ('serviceWorker' in navigator) {
     }
   });
 }
+
+
+// ================================================
+// === BUCLE CONTINUO v1 — Loop + CTAs de Compra ===
+// ================================================
+// Extensión no-destructiva — sigue el patrón override de Superpowers v2.
+// Nuevos tipos: CTA_COMPRA, POPUP, FLASH_SALE, BOOM_VENTA
+// Modo bucle: el script nunca termina — se reinicia al llegar al final.
+// ================================================
+
+// ── Bandera de modo bucle (activo por defecto) ────────────────
+window._bucleMode = true;
+
+// ── Override parseScript: 4 nuevos tipos de bloque ───────────
+const BUCLE_BLOCK_RE = /^(\d{1,2}):(\d{2})\s+\[(GUION|COMENTARIO|RESPONDER|ACCION|MOSTRAR|PAUSA|EMOCION|COUNTDOWN|CTA_COMPRA|POPUP|FLASH_SALE|BOOM_VENTA)\]\s+([\s\S]+)/;
+
+window.parseScript = function (text) {
+  const result = [];
+  for (const raw of text.split('\n')) {
+    const m = raw.trim().match(BUCLE_BLOCK_RE);
+    if (!m) continue;
+    const mins    = parseInt(m[1], 10);
+    const secs    = parseInt(m[2], 10);
+    const type    = m[3];
+    const content = m[4].trim();
+    const time    = mins * 60 + secs;
+    const timeStr = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    let username = null;
+    let message  = content;
+    if (type === 'COMENTARIO') {
+      const ci = content.indexOf(':');
+      if (ci > 0) { username = content.slice(0, ci).trim(); message = content.slice(ci + 1).trim(); }
+    }
+    result.push({ time, timeStr, type, content, username, message });
+  }
+  return result;
+};
+
+// ── Override updateProgressFill: indicador live activo ────────
+// En bucle la barra siempre muestra 100% y pulsa via CSS.
+const _bucle_origPF = window.updateProgressFill;
+window.updateProgressFill = function (scriptTime) {
+  if (!window._bucleMode) { _bucle_origPF && _bucle_origPF(scriptTime); return; }
+  const el = document.getElementById('progress-fill');
+  if (el) el.style.width = '100%';
+};
+
+// ── Override updateStatusBar: sin "Fin del guión" ─────────────
+const _bucle_origSB = window.updateStatusBar;
+window.updateStatusBar = function (scriptTime) {
+  if (!window._bucleMode) { _bucle_origSB && _bucle_origSB(scriptTime); return; }
+  const nextB   = state.blocks[state.currentIdx + 1];
+  const preview = nextB
+    ? `[${nextB.type}] ${nextB.content.slice(0, 58)}${nextB.content.length > 58 ? '…' : ''}`
+    : '🔄 Live continuo — reiniciando ciclo...';
+  const el = document.getElementById('next-preview');
+  if (el) el.textContent = preview;
+};
+
+// ── Loop engine: reinicio automático al llegar al final ───────
+const _bucle_origTick = window.tick;
+window.tick = function () {
+  if (window._bucleMode && state.isPlaying && state.blocks.length > 0) {
+    const last    = state.blocks[state.blocks.length - 1];
+    const elapsed = getElapsed();
+    if (last && elapsed >= last.time + 1.5) {
+      // Reiniciar ciclo: resetear tiempo y posición
+      state.elapsedAtPause = 0;
+      state.startTime      = Date.now();
+      state.currentIdx     = -1;
+      _sp_lastActiveIdx    = -99; // forzar re-trigger en superpowers
+      _bucle_lastIdx       = -99;
+      // Mantener solo los últimos 20 comentarios (evitar acumulación infinita)
+      if (state.visibleComments && state.visibleComments.length > 20) {
+        state.visibleComments = state.visibleComments.slice(-20);
+      }
+    }
+  }
+  _bucle_origTick.call(this);
+};
+
+// ── Override renderBlockStates: hookear nuevos tipos ──────────
+const _bucle_origRBS = window.renderBlockStates;
+let _bucle_lastIdx   = -1;
+
+window.renderBlockStates = function () {
+  _bucle_origRBS.call(this);
+  const idx = state.currentIdx;
+  if (idx !== _bucle_lastIdx) {
+    _bucle_lastIdx = idx;
+    bucleHandleBlock(idx);
+  }
+};
+
+function bucleHandleBlock(idx) {
+  const block = state.blocks[idx];
+  if (!block) return;
+  switch (block.type) {
+    case 'CTA_COMPRA':  bucleShowCtaCompra(block.content);  break;
+    case 'POPUP':       bucleShowPopup(block.content);       break;
+    case 'FLASH_SALE':  bucleShowFlashSale(block.content);   break;
+    case 'BOOM_VENTA':  bucleShowBoomVenta(block.content);   break;
+  }
+}
+
+// ── Helper: parsear contenido de bloque ───────────────────────
+// Separa por " — " o " – " o " - "
+function bucleParse(content, defaults) {
+  const parts = content.split(/\s*[—–]{1}\s*|\s+-\s+/);
+  return defaults.map((d, i) => (parts[i] !== undefined && parts[i].trim() ? parts[i].trim() : d));
+}
+
+// ────────────────────────────────────────────────────────────────
+// OVERLAY 1 — CTA_COMPRA: banner inferior de llamada a la acción
+// Sintaxis: MM:SS [CTA_COMPRA] Texto del CTA — link (opcional)
+// Ejemplo:  15:30 [CTA_COMPRA] ¡Únete ahora por $197! — wa.me/57300
+// ────────────────────────────────────────────────────────────────
+let _bucle_ctaTimer = null;
+function bucleShowCtaCompra(content) {
+  const [texto, link] = bucleParse(content, [content, '']);
+  const overlay = document.getElementById('bucle-cta-overlay');
+  if (!overlay) return;
+  overlay.querySelector('.bucle-cta-text').textContent = texto;
+  const linkEl = overlay.querySelector('.bucle-cta-link');
+  linkEl.textContent   = link ? '→ ' + link : '';
+  linkEl.style.display = link ? '' : 'none';
+  overlay.classList.add('bucle-visible');
+  if (_bucle_ctaTimer) clearTimeout(_bucle_ctaTimer);
+  _bucle_ctaTimer = setTimeout(() => overlay.classList.remove('bucle-visible'), 8000);
+}
+
+// ────────────────────────────────────────────────────────────────
+// OVERLAY 2 — POPUP: tarjeta de compra rápida
+// Sintaxis: MM:SS [POPUP] Título — Descripción breve — $Precio
+// Ejemplo:  28:00 [POPUP] Curso IA para Ventas — Acceso de por vida — $197
+// ────────────────────────────────────────────────────────────────
+let _bucle_popupTimer = null;
+function bucleShowPopup(content) {
+  const [titulo, desc, precio] = bucleParse(content, [content, '', '']);
+  const overlay = document.getElementById('bucle-popup-overlay');
+  if (!overlay) return;
+  overlay.querySelector('.bucle-popup-title').textContent = titulo;
+  overlay.querySelector('.bucle-popup-desc').textContent  = desc;
+  overlay.querySelector('.bucle-popup-price').textContent = precio;
+  overlay.classList.add('bucle-visible');
+  if (_bucle_popupTimer) clearTimeout(_bucle_popupTimer);
+  _bucle_popupTimer = setTimeout(() => overlay.classList.remove('bucle-visible'), 12000);
+}
+
+// ────────────────────────────────────────────────────────────────
+// OVERLAY 3 — FLASH_SALE: oferta con cuenta regresiva
+// Sintaxis: MM:SS [FLASH_SALE] 60 — Descripción — $Precio
+// Ejemplo:  35:00 [FLASH_SALE] 90 — ¡Solo 5 cupos a precio early bird! — $97
+// ────────────────────────────────────────────────────────────────
+let _bucle_fsInterval = null;
+function bucleShowFlashSale(content) {
+  const [secStr, texto, precio] = bucleParse(content, ['30', content, '']);
+  const seconds = Math.max(5, parseInt(secStr, 10) || 30);
+  const overlay = document.getElementById('bucle-flashsale-overlay');
+  if (!overlay) return;
+  overlay.querySelector('.bucle-fs-text').textContent  = texto;
+  overlay.querySelector('.bucle-fs-price').textContent = precio;
+  overlay.classList.add('bucle-visible');
+  if (_bucle_fsInterval) clearInterval(_bucle_fsInterval);
+  let remaining = seconds;
+  const cntEl = overlay.querySelector('.bucle-fs-countdown');
+  if (cntEl) cntEl.textContent = remaining;
+  _bucle_fsInterval = setInterval(() => {
+    remaining--;
+    if (cntEl) cntEl.textContent = remaining;
+    if (remaining <= 0) { clearInterval(_bucle_fsInterval); overlay.classList.remove('bucle-visible'); }
+  }, 1000);
+}
+
+function bucleStopFlashSale() {
+  if (_bucle_fsInterval) clearInterval(_bucle_fsInterval);
+  document.getElementById('bucle-flashsale-overlay')?.classList.remove('bucle-visible');
+}
+
+// ────────────────────────────────────────────────────────────────
+// OVERLAY 4 — BOOM_VENTA: overlay pantalla completa de venta
+// Sintaxis: MM:SS [BOOM_VENTA] Texto impactante del momento de venta
+// Ejemplo:  40:00 [BOOM_VENTA] ¡Este es el momento — solo quedan 3 cupos!
+// ────────────────────────────────────────────────────────────────
+let _bucle_boomTimer = null;
+function bucleShowBoomVenta(content) {
+  const overlay = document.getElementById('bucle-boom-overlay');
+  if (!overlay) return;
+  overlay.querySelector('.bucle-boom-text').textContent = content;
+  overlay.classList.add('bucle-visible');
+  if (_bucle_boomTimer) clearTimeout(_bucle_boomTimer);
+  _bucle_boomTimer = setTimeout(() => overlay.classList.remove('bucle-visible'), 6000);
+}
+
+// ── Inyección de DOM: los 4 overlays ─────────────────────────
+function bucleInjectDom() {
+  if (document.getElementById('bucle-cta-overlay')) return;
+  const wrapper = document.createElement('div');
+  wrapper.id = 'bucle-overlays-root';
+  wrapper.innerHTML = `
+<div id="bucle-cta-overlay" class="bucle-overlay-cta" role="status" aria-live="polite">
+  <span class="material-symbols-outlined" style="font-size:18px;flex-shrink:0;line-height:1;">shopping_cart</span>
+  <span class="bucle-cta-text"></span>
+  <span class="bucle-cta-link"></span>
+  <button class="bucle-close-btn" onclick="document.getElementById('bucle-cta-overlay').classList.remove('bucle-visible')" aria-label="Cerrar">✕</button>
+</div>
+
+<div id="bucle-popup-overlay" class="bucle-overlay-popup" role="dialog" aria-modal="true">
+  <button class="bucle-close-btn" onclick="document.getElementById('bucle-popup-overlay').classList.remove('bucle-visible')" aria-label="Cerrar">✕</button>
+  <div class="bucle-popup-badge">🔥 OFERTA ESPECIAL</div>
+  <div class="bucle-popup-title"></div>
+  <div class="bucle-popup-desc"></div>
+  <div class="bucle-popup-price"></div>
+  <div class="bucle-popup-cta-btn">¡QUIERO ESTO AHORA!</div>
+</div>
+
+<div id="bucle-flashsale-overlay" class="bucle-overlay-flashsale" role="alert">
+  <button class="bucle-close-btn" onclick="bucleStopFlashSale()" aria-label="Cerrar">✕</button>
+  <div class="bucle-fs-badge">⚡ FLASH SALE</div>
+  <div class="bucle-fs-text"></div>
+  <div class="bucle-fs-price"></div>
+  <div class="bucle-fs-timer-wrap">
+    <span class="bucle-fs-label">Termina en</span>
+    <span class="bucle-fs-countdown">30</span>
+    <span class="bucle-fs-label">segundos</span>
+  </div>
+</div>
+
+<div id="bucle-boom-overlay" class="bucle-overlay-boom" role="alert">
+  <div class="bucle-boom-pulse"></div>
+  <div class="bucle-boom-text"></div>
+</div>
+`;
+  document.body.appendChild(wrapper);
+}
+
+// ── Inyección de CSS ─────────────────────────────────────────
+function bucleInjectCss() {
+  if (document.getElementById('bucle-styles')) return;
+  const s = document.createElement('style');
+  s.id = 'bucle-styles';
+  s.textContent = `
+/* ─── Modo bucle: barra de progreso pulsante ─── */
+.bucle-active #progress-fill {
+  width:100% !important;
+  transition:none !important;
+  background:linear-gradient(90deg,#ff4f6a,#ff9a3c,#ffdb3c) !important;
+  animation:bucle-bar-pulse 3s ease-in-out infinite !important;
+}
+@keyframes bucle-bar-pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+/* ─── Base común de overlays ─── */
+.bucle-overlay-cta,.bucle-overlay-popup,
+.bucle-overlay-flashsale,.bucle-overlay-boom {
+  position:fixed; z-index:9999; pointer-events:auto;
+  opacity:0; visibility:hidden;
+  transition:opacity .35s ease, transform .35s ease, visibility 0s linear .35s;
+}
+.bucle-visible {
+  opacity:1 !important; visibility:visible !important;
+  transition:opacity .35s ease, transform .35s ease, visibility 0s linear 0s !important;
+}
+
+/* ─── CTA_COMPRA: banner inferior centrado ─── */
+.bucle-overlay-cta {
+  bottom:88px; left:50%;
+  transform:translateX(-50%) translateY(18px);
+  display:flex; align-items:center; gap:10px; flex-wrap:nowrap;
+  background:linear-gradient(135deg,#e8194a,#ff6b35);
+  color:#fff; font-size:15px; font-weight:700;
+  padding:12px 22px; border-radius:40px;
+  box-shadow:0 4px 30px rgba(232,25,74,.55);
+  white-space:nowrap; max-width:92vw;
+}
+.bucle-overlay-cta.bucle-visible { transform:translateX(-50%) translateY(0) !important; }
+.bucle-cta-link { font-size:13px; opacity:.75; }
+
+/* ─── POPUP: tarjeta de compra rápida ─── */
+.bucle-overlay-popup {
+  top:50%; left:50%;
+  transform:translate(-50%,-50%) scale(.88);
+  background:linear-gradient(160deg,#1a1a2e,#16213e);
+  border:1px solid rgba(255,79,106,.4);
+  border-radius:20px; padding:32px 28px 28px;
+  text-align:center; width:340px; max-width:92vw;
+  box-shadow:0 0 60px rgba(255,79,106,.3),0 20px 60px rgba(0,0,0,.6);
+}
+.bucle-overlay-popup.bucle-visible { transform:translate(-50%,-50%) scale(1) !important; }
+.bucle-popup-badge  { font-size:11px;font-weight:900;letter-spacing:1.5px;color:#ff4f6a;margin-bottom:10px; }
+.bucle-popup-title  { font-size:22px;font-weight:800;color:#fff;margin-bottom:10px;line-height:1.3; }
+.bucle-popup-desc   { font-size:13px;color:rgba(255,255,255,.6);margin-bottom:14px;line-height:1.5; }
+.bucle-popup-price  { font-size:36px;font-weight:900;color:#ffdb3c;margin-bottom:18px; }
+.bucle-popup-cta-btn {
+  background:linear-gradient(135deg,#e8194a,#ff6b35);
+  color:#fff;font-weight:800;font-size:13px;letter-spacing:1px;
+  padding:12px 26px;border-radius:40px;cursor:pointer;display:inline-block;
+}
+
+/* ─── FLASH_SALE: banner superior con timer ─── */
+.bucle-overlay-flashsale {
+  top:26px; left:50%;
+  transform:translateX(-50%) translateY(-22px);
+  background:linear-gradient(135deg,#ff6b35,#ffdb3c);
+  color:#1a1a1a; padding:16px 28px;
+  border-radius:16px; text-align:center;
+  min-width:260px; max-width:92vw;
+  box-shadow:0 8px 34px rgba(255,107,53,.55);
+}
+.bucle-overlay-flashsale.bucle-visible { transform:translateX(-50%) translateY(0) !important; }
+.bucle-fs-badge  { font-size:11px;font-weight:900;letter-spacing:2px;margin-bottom:4px; }
+.bucle-fs-text   { font-size:18px;font-weight:800;margin-bottom:4px;line-height:1.3; }
+.bucle-fs-price  { font-size:26px;font-weight:900;margin-bottom:8px; }
+.bucle-fs-timer-wrap {
+  display:flex;align-items:baseline;justify-content:center;gap:5px;
+  background:rgba(0,0,0,.12);border-radius:8px;padding:5px 12px;
+}
+.bucle-fs-countdown { font-size:30px;font-weight:900;font-variant-numeric:tabular-nums; }
+.bucle-fs-label     { font-size:12px;font-weight:600;opacity:.7; }
+
+/* ─── BOOM_VENTA: overlay de pantalla completa ─── */
+.bucle-overlay-boom {
+  inset:0;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(232,25,74,.92);
+  backdrop-filter:blur(4px);
+}
+.bucle-boom-pulse {
+  position:absolute;inset:0;
+  background:radial-gradient(circle at center,rgba(255,219,60,.35) 0%,transparent 70%);
+  animation:bucle-boom-pulse 1.2s ease-in-out infinite;
+}
+.bucle-boom-text {
+  position:relative;z-index:1;color:#fff;font-weight:900;
+  font-size:clamp(22px,5vw,46px);text-align:center;
+  padding:28px 32px;text-shadow:0 2px 20px rgba(0,0,0,.4);
+  animation:bucle-boom-in .5s cubic-bezier(.175,.885,.32,1.275);
+  max-width:80%;line-height:1.25;
+}
+@keyframes bucle-boom-pulse { 0%,100%{opacity:.4;transform:scale(1)} 50%{opacity:1;transform:scale(1.1)} }
+@keyframes bucle-boom-in    { from{opacity:0;transform:scale(.7)} to{opacity:1;transform:scale(1)} }
+
+/* ─── Botón cerrar (todos los overlays) ─── */
+.bucle-close-btn {
+  position:absolute;top:10px;right:12px;
+  background:none;border:none;color:rgba(255,255,255,.65);
+  font-size:15px;cursor:pointer;padding:4px 8px;line-height:1;
+}
+.bucle-close-btn:hover { color:#fff; }
+`;
+  document.head.appendChild(s);
+}
+
+// ── Inicializar al cargar el DOM ──────────────────────────────
+(function bucleInit() {
+  function doInit() {
+    bucleInjectDom();
+    bucleInjectCss();
+    if (window._bucleMode) document.body.classList.add('bucle-active');
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', doInit);
+  } else {
+    doInit();
+  }
+})();
+
+// ── Referencia rápida de sintaxis de los nuevos bloques ──────
+// 00:00 [CTA_COMPRA]  Texto del botón — link (opcional)
+// 00:00 [POPUP]       Título — Descripción — $Precio
+// 00:00 [FLASH_SALE]  Segundos — Descripción — $Precio
+// 00:00 [BOOM_VENTA]  Texto del momento de venta (pantalla completa)

@@ -1,0 +1,31 @@
+{
+  "name": "fakelive-mcp",
+  "version": "1.0.0",
+  "description": "MCP Server para FakeLive Pro — Genera guiones de streaming con IA (retención, venta, estructura de lanzamiento)",
+  "main": "index.js",
+  "type": "module",
+  "bin": {
+    "fakelive-mcp": "./index.js"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "keywords": [
+    "mcp",
+    "streaming",
+    "teleprompter",
+    "live",
+    "fakelive",
+    "guiones",
+    "ventas"
+  ],
+  "author": "FakeLive Pro",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
